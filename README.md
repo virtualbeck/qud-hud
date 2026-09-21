@@ -62,3 +62,11 @@ item and print its real ID; immediately fix `WorkshopId` to that number and comm
 `--workshop` again, or a second run will create yet another duplicate.)
 
 Every later `--workshop` run reads `WorkshopId` from `mod/workshop.json` and updates that one item.
+
+**Known gotcha:** an item created via SteamCMD can come up **Private** on the Steam page even though
+`visibility` in the generated VDF and `"Visibility": "2"` in `mod/workshop.json` both say public. Check
+the item's page and, if needed, set it public by hand once: **Change Visibility** on
+https://steamcommunity.com/sharedfiles/filedetails/?id=3805872225. Later `--workshop` updates haven't
+been confirmed not to reset this — recheck after each update until that's verified.
+
+Qud HUD's current Workshop item: https://steamcommunity.com/sharedfiles/filedetails/?id=3805872225
