@@ -25,8 +25,9 @@ before publishing:
    just built (not a stale cached one).
 3. Edit, rerun `python build.py --install`, reload and retest — repeat as needed. No git or Steam
    involvement required for this loop.
-4. Once satisfied, follow the release checklist below, then resubscribe (or check the Workshop content
-   folder) to confirm the published version matches what you tested.
+4. Once satisfied, `python build.py --uninstall` removes the local dev copy, so it's out of the way of
+   the Workshop-subscribed copy. Follow the release checklist below, then resubscribe (or check the
+   Workshop content folder) to confirm the published version matches what you tested.
 
 ## Release checklist
 1. Bump `VERSION` and add a section to `CHANGELOG.md`.

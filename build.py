@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """Builds the Qud HUD mod folder and a release zip.
 
-  python build.py              build dist/QudHUD and dist/QudHUD-vX.Y.Z.zip
-  python build.py --install    also copy the mod into your Caves of Qud Mods folder
-  python build.py --install PATH   copy into PATH instead
+  python build.py                    build dist/QudHUD and dist/QudHUD-vX.Y.Z.zip
+  python build.py --install          also copy the mod into your Caves of Qud Mods folder
+  python build.py --install PATH     copy into PATH instead
+  python build.py --uninstall        remove the mod from your Caves of Qud Mods folder
+  python build.py --uninstall PATH   remove it from PATH instead
+  python build.py --workshop         build, then publish dist/QudHUD to the Steam Workshop via SteamCMD
 
 The version comes from the VERSION file and is stamped into the manifest,
 the C# code and the display page.
-  python build.py --workshop    build, then publish dist/QudHUD to the Steam Workshop via SteamCMD
 
 --workshop needs `steamcmd` on PATH and the STEAM_USER env var set to a Steam
 account. SteamCMD will prompt for the password and, on first login from this
@@ -144,7 +146,22 @@ def install(src, target):
     print(f"  installed to {dest}")
 
 
+def uninstall(target):
+    dest = Path(target) / MOD_ID
+    if not dest.exists():
+        print(f"  nothing installed at {dest}")
+        return
+    shutil.rmtree(dest)
+    print(f"  removed {dest}")
+
+
 if __name__ == "__main__":
+    if "--uninstall" in sys.argv:
+        i = sys.argv.index("--uninstall")
+        target = sys.argv[i + 1] if i + 1 < len(sys.argv) else mods_dir()
+        uninstall(target)
+        sys.exit(0)
+
     folder = build()
     if "--install" in sys.argv:
         i = sys.argv.index("--install")
