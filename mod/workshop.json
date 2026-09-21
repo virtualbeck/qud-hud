@@ -1,0 +1,8 @@
+{
+  "WorkshopId": 3805879947,
+  "Title": "Qud HUD",
+  "Description": "[h1]Qud HUD[/h1]\nA heads-up display for your second monitor. Glance over and see everything that needs your attention, without digging through sub screens.\n\n[h2]What it shows[/h2]\n[list]\n[*][b]Pressing matters:[/b] critical problems first. Low HP, diseases, incapacitating effects, thirst, hunger, burning or freezing, adjacent and dangerous hostiles, broken gear, empty energy cells.\n[*]Effects with durations and details\n[*]Ability cooldowns, soonest ready first\n[*]Hostiles in sight with HP, level and difficulty rating\n[*]Attributes, AV, DV, MA, quickness, move speed and resistances\n[*]Thirst, hunger, fresh water, temperature and carry weight\n[/list]\n\n[h2]How to use[/h2]\nLoad a game. The message log tells you where the display page was written (normally Documents/QudHUD/hud.html). Open it in any browser on your second monitor. It updates right before each of your turns.\n\nDrag panels by their \u2261 grip to rearrange them. Your layout is saved.\n\n[h2]Notes[/h2]\n[list]\n[*]No server or internet connection needed; the page reads a local file.\n[*]Keep the mod enabled for saves made with it.\n[*]Source and issues: https://github.com/virtualbeck/qud-hud\n[/list]",
+  "Tags": "UI",
+  "Visibility": "2",
+  "ImagePath": "preview.png"
+}

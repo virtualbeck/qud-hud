@@ -42,8 +42,11 @@ Requires:
 - `STEAM_USER` set to your Steam account name. SteamCMD prompts for the password and, on first login
   from a machine, a Steam Guard code (interactive; it caches the session afterward).
 
-First publish: run it once with no `mod/workshop.json` present. SteamCMD prints the new published file
-ID; create `mod/workshop.json` with that ID and commit it:
+`--workshop` refuses to run until `mod/workshop.json` exists, and only ever updates the `WorkshopId`
+it names — it never creates a new item. Do the very first publish through the in-game uploader (see
+"Steam Workshop" above), which writes `mod/workshop.json` for you; copy it into `mod/` here and commit
+it. (If you don't want to touch the game for that step, you can instead write the file by hand with a
+placeholder ID, e.g.:
 
     {
       "WorkshopId": 123456789,
@@ -54,5 +57,8 @@ ID; create `mod/workshop.json` with that ID and commit it:
       "ImagePath": "preview.png"
     }
 
-Every later `--workshop` run reads `WorkshopId` from that file and updates the same item instead of
-creating a new one.
+then run `python build.py --workshop` once by hand with that placeholder — SteamCMD will create a new
+item and print its real ID; immediately fix `WorkshopId` to that number and commit before running
+`--workshop` again, or a second run will create yet another duplicate.)
+
+Every later `--workshop` run reads `WorkshopId` from `mod/workshop.json` and updates that one item.

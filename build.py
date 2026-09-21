@@ -116,6 +116,12 @@ def publish_workshop(folder, version):
         sys.exit("Set STEAM_USER to your Steam account name to publish to the Workshop.")
     if shutil.which("steamcmd") is None:
         sys.exit("steamcmd not found on PATH. Install it, then re-run with --workshop.")
+    if not WORKSHOP_JSON.exists():
+        sys.exit(
+            f"{WORKSHOP_JSON} doesn't exist yet. Publishing without it creates a NEW Workshop item "
+            "every time instead of updating one. Create it first (see README.md's 'Steam Workshop' "
+            "or 'Automated Workshop upload' sections), commit it, then re-run --workshop."
+        )
 
     vdf_path = build_vdf(folder, version)
     print(f"  wrote {vdf_path}")
@@ -123,19 +129,6 @@ def publish_workshop(folder, version):
     result = subprocess.run(["steamcmd", "+login", user, "+workshop_build_item", str(vdf_path), "+quit"])
     if result.returncode != 0:
         sys.exit(f"steamcmd exited with status {result.returncode}")
-    if not WORKSHOP_JSON.exists():
-        print()
-        print("First publish: steamcmd printed a new Workshop item ID above (published file id).")
-        print(f"Create {WORKSHOP_JSON} with that ID, e.g.:")
-        print(json.dumps({
-            "WorkshopId": 0,
-            "Title": "Qud HUD",
-            "Description": (ROOT / "workshop_description.txt").read_text(encoding="utf-8").strip(),
-            "Tags": "UI",
-            "Visibility": "2",
-            "ImagePath": "preview.png",
-        }, indent=2))
-        print("Then commit mod/workshop.json so future builds update the same item.")
 
 
 def install(src, target):
