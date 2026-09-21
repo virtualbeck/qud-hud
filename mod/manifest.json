@@ -1,0 +1,9 @@
+{
+  "ID": "QudHUD",
+  "Title": "Qud HUD",
+  "Description": "Second monitor heads-up display. Shows HP, effects, diseases, hunger, thirst, temperature, cooldowns, gear problems and hostiles in sight in a browser window that updates every turn.",
+  "Version": "__VERSION__",
+  "Author": "",
+  "Tags": "UI",
+  "PreviewImage": "preview.png"
+}

@@ -1,0 +1,24 @@
+[h1]Qud HUD[/h1]
+A heads-up display for your second monitor. Glance over and see everything that needs your attention, without digging through sub screens.
+
+[h2]What it shows[/h2]
+[list]
+[*][b]Pressing matters:[/b] critical problems first. Low HP, diseases, incapacitating effects, thirst, hunger, burning or freezing, adjacent and dangerous hostiles, broken gear, empty energy cells.
+[*]Effects with durations and details
+[*]Ability cooldowns, soonest ready first
+[*]Hostiles in sight with HP, level and difficulty rating
+[*]Attributes, AV, DV, MA, quickness, move speed and resistances
+[*]Thirst, hunger, fresh water, temperature and carry weight
+[/list]
+
+[h2]How to use[/h2]
+Load a game. The message log tells you where the display page was written (normally Documents/QudHUD/hud.html). Open it in any browser on your second monitor. It updates right before each of your turns.
+
+Drag panels by their ≡ grip to rearrange them. Your layout is saved.
+
+[h2]Notes[/h2]
+[list]
+[*]No server or internet connection needed; the page reads a local file.
+[*]Keep the mod enabled for saves made with it.
+[*]Source and issues: GITHUB LINK
+[/list]

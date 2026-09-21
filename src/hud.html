@@ -1,0 +1,654 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Qud HUD</title>
+<style>
+:root{
+  --void:#041615; --panel:#072120; --frame:#155352; --frame-hi:#40a4b9;
+  --text:#b1c9c3; --dim:#5d837d; --gold:#cfc041; --white:#ffffff;
+  --crit:#d74200; --warn:#e99f10; --good:#00c420; --info:#77bfcf;
+  --scale:1;
+  font-size:calc(16px * var(--scale));
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:var(--void);color:var(--text);min-height:100%}
+body{
+  font-family:'Cascadia Mono','Consolas','DejaVu Sans Mono','Menlo',monospace;
+  line-height:1.35;padding:.6rem 1rem 2.2rem;
+  background-image:repeating-linear-gradient(0deg,rgba(0,0,0,.22) 0 1px,transparent 1px 3px);
+}
+.panel{position:relative;border:3px double var(--frame);background:var(--panel);padding:1.05rem .8rem .7rem;margin-top:1.1rem}
+.panel>h2{
+  position:absolute;top:-.78em;left:.7rem;font-size:1rem;font-weight:normal;color:var(--gold);
+  padding:0 .4rem;background:linear-gradient(var(--void) 50%,var(--panel) 50%);
+}
+.panel>h2::before{content:'[ ';color:var(--frame-hi)}
+.panel>h2::after{content:' ]';color:var(--frame-hi)}
+.dim{color:var(--dim)}
+.empty{color:var(--dim)}
+
+/* header */
+#head{display:grid;grid-template-columns:1.1fr 1.4fr 1fr;gap:1.4rem;align-items:end}
+#who .name{font-size:1.7rem;color:var(--gold);line-height:1.1}
+#who .sub{color:var(--text);margin-top:.15rem}
+#place{text-align:right}
+#place .zname{font-size:1.15rem;color:var(--white)}
+.bar{height:.55rem;border:1px solid var(--frame);background:#021010;margin-top:.25rem}
+.bar>i{display:block;height:100%;
+  background:repeating-linear-gradient(90deg,var(--c) 0 .55rem,transparent .55rem .7rem)}
+#vitals .hpnum{display:flex;justify-content:space-between;align-items:baseline}
+#vitals .hpnum b{font-size:2rem;font-weight:normal;line-height:1}
+#vitals .hpbar{height:1.15rem}
+
+/* warnings: the loudest thing on screen */
+#warn{border-color:var(--frame)}
+#warn.lvl3{border-color:var(--crit);animation:throb 1.2s steps(2,jump-none) infinite}
+#warn.lvl2{border-color:var(--warn)}
+#warn ul{list-style:none;columns:2 22rem;column-gap:2rem}
+#warn li{break-inside:avoid;padding:.12rem 0 .12rem 2rem;text-indent:-2rem}
+#warn li .g{display:inline-block;width:2rem;text-indent:0}
+#warn li.s3{color:#ff7a45;font-size:1.15rem}
+#warn li.s3 .g{color:var(--crit)}
+#warn li.s2 .g{color:var(--warn)}
+#warn li.s1{color:var(--info)}
+#warn li.s1 .g{color:var(--frame-hi)}
+#warn .ok{color:var(--good)}
+#warn .quip{color:var(--dim);margin-top:.15rem}
+@keyframes throb{50%{border-color:#5a1a00}}
+
+/* columns */
+#cols{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0 1rem}
+.zone.vacant{display:none}
+.col{min-width:0}
+.row{display:flex;justify-content:space-between;gap:.8rem;align-items:baseline}
+.row+.row{margin-top:.18rem}
+.row .r{white-space:nowrap}
+.item+.item{margin-top:.45rem}
+.item .det{color:var(--dim);font-size:.88rem;white-space:pre-line;margin-top:.05rem}
+.fx.bad .nm::before{content:'\25BC ';color:var(--crit)}
+.fx.good .nm::before{content:'\25B2 ';color:var(--good)}
+.fx.dis .nm::before{content:'\2623 ';color:var(--crit)}
+
+.attrs{display:grid;grid-template-columns:repeat(3,1fr);gap:.5rem}
+.attr{border:1px solid var(--frame);text-align:center;padding:.3rem 0 .25rem}
+.attr .k{color:var(--dim);font-size:.85rem}
+.attr .v{font-size:1.5rem;line-height:1.1;color:var(--white)}
+.attr .m{font-size:.85rem}
+.attr.lo .v{color:var(--crit)}
+.attr.hi .v{color:var(--good)}
+
+.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:.4rem;text-align:center}
+.stats .k{color:var(--dim);font-size:.85rem}
+.stats .v{font-size:1.25rem;color:var(--white)}
+.res{display:grid;grid-template-columns:repeat(4,1fr);gap:.4rem;text-align:center;margin-top:.6rem;padding-top:.5rem;border-top:1px dashed var(--frame)}
+
+.foe .hp{height:.4rem;margin-top:.15rem}
+.foe.adj .dist{color:var(--crit)}
+.ab.cool{color:var(--dim)}
+.ab .r{color:var(--good)}
+.ab.cool .r{color:var(--warn)}
+.ab.off,.ab.off .r{color:var(--dim);opacity:.7}
+
+#foot{position:fixed;left:0;right:0;bottom:0;display:flex;justify-content:space-between;gap:1rem;
+  padding:.35rem 1rem;font-size:.8rem;color:var(--dim);background:var(--void);border-top:1px solid var(--frame)}
+#link::before{content:'\25CF ';color:var(--dim)}
+#link.on::before{color:var(--good)}
+#link.off::before{color:var(--crit)}
+
+#wait{display:none;max-width:40rem;margin:18vh auto 0;text-align:center}
+#wait .panel{text-align:left}
+#wait p+p{margin-top:.6rem}
+body.waiting #app{display:none}
+body.waiting #wait{display:block}
+
+.sep{border-top:1px dashed var(--frame);margin:.45rem 0 .35rem}
+
+/* options */
+#foot button{font:inherit;color:var(--frame-hi);background:none;border:0;cursor:pointer;padding:0 .2rem}
+#foot button:hover,#foot button:focus-visible{color:var(--gold)}
+#foot .right{display:flex;gap:1.2rem;align-items:baseline}
+#opts{position:fixed;right:1rem;bottom:2.4rem;z-index:20;width:24rem;max-width:calc(100vw - 2rem);margin:0;
+  box-shadow:0 .6rem 1.6rem rgba(0,0,0,.6)}
+#opts[hidden]{display:none}
+#opts .opt{display:flex;gap:.6rem;align-items:baseline}
+#opts .opt+.opt{margin-top:.5rem}
+#opts .tog{font:inherit;background:none;border:0;cursor:pointer;color:var(--dim);padding:0;white-space:pre}
+#opts .tog[aria-checked=true]{color:var(--gold)}
+#opts .tog:focus-visible,#opts input:focus-visible{outline:1px solid var(--gold);outline-offset:1px}
+#opts input{font:inherit;width:4.5rem;background:var(--void);color:var(--white);border:1px solid var(--frame);padding:0 .3rem}
+#opts .sub{padding-left:3.6ch;color:var(--dim)}
+#opts .sub.off{opacity:.45}
+#opts .ver{margin-top:.8rem;padding-top:.5rem;border-top:1px dashed var(--frame);color:var(--dim);font-size:.85rem}
+
+/* moving panels */
+.grip{position:absolute;top:-.78em;right:.6rem;border:0;font:inherit;font-size:1rem;line-height:1.35;
+  color:var(--frame-hi);padding:0 .35rem;cursor:grab;touch-action:none;
+  background:linear-gradient(var(--void) 50%,var(--panel) 50%)}
+.grip:hover,.grip:focus-visible{color:var(--gold)}
+.grip:focus-visible{outline:1px solid var(--gold);outline-offset:1px}
+.zone{min-width:0}
+body.dragging,body.dragging *{cursor:grabbing!important;user-select:none}
+body.dragging .zone{min-height:4rem;outline:1px dashed var(--frame);outline-offset:.3rem}
+.panel.lifted{position:fixed;z-index:10;margin:0;pointer-events:none;opacity:.92;
+  box-shadow:0 0 0 1px var(--gold),0 .6rem 1.6rem rgba(0,0,0,.6)}
+.panel.ghost{opacity:.3}
+#marker{position:fixed;z-index:9;height:3px;background:var(--gold);pointer-events:none;display:none}
+body.dragging #marker{display:block}
+.panel.moved{animation:settle .5s ease-out}
+@keyframes settle{from{border-color:var(--gold)}}
+
+@media (max-width:760px){
+  #head{grid-template-columns:1fr}
+  #place{text-align:left}
+  #warn ul{columns:1}
+}
+@media (prefers-reduced-motion:reduce){#warn.lvl3,.panel.moved{animation:none}}
+</style>
+</head>
+<body class="waiting">
+<div id="wait">
+  <div class="panel"><h2>Qud HUD</h2>
+    <p>Waiting for Caves of Qud.</p>
+    <p class="dim">Start or load a game with the Qud HUD mod enabled. This page refreshes itself four times a second; keep it open on your second monitor.</p>
+  </div>
+</div>
+
+<div id="app">
+  <div id="head">
+    <div id="who"></div>
+    <div id="vitals"></div>
+    <div id="place"></div>
+  </div>
+
+  <div class="zone" data-zone="top">
+    <section class="panel" id="warn" data-panel="warn"><h2>Pressing matters</h2><div id="warnBody"></div></section>
+  </div>
+
+  <div id="cols">
+    <div class="col zone" data-zone="c1">
+      <section class="panel" data-panel="foes"><h2>Hostiles in sight</h2><div id="foes"></div></section>
+      <section class="panel" data-panel="effects"><h2>Effects</h2><div id="effects"></div></section>
+      <section class="panel" data-panel="combat"><h2>Combat</h2><div id="combat"></div></section>
+      <section class="panel" data-panel="abilities"><h2>Abilities</h2><div id="abilities"></div></section>
+    </div>
+    <div class="col zone" data-zone="c2">
+      <section class="panel" data-panel="survival"><h2>Survival</h2><div id="survival"></div></section>
+      <section class="panel" data-panel="gear"><h2>Gear</h2><div id="gear"></div></section>
+      <section class="panel" data-panel="attrs"><h2>Attributes</h2><div id="attrs"></div></section>
+    </div>
+    <div class="col zone" data-zone="c3"></div>
+  </div>
+</div>
+
+<div id="marker"></div>
+<section class="panel" id="opts" hidden><h2>Options</h2>
+  <div class="opt"><button type="button" class="tog" role="switch" data-opt="waterWarn" aria-checked="true">[X]</button>
+    <label>Warn when fresh water runs low</label></div>
+  <div class="opt sub" id="waterSub"><label for="waterMin">At or below</label>
+    <input id="waterMin" type="number" min="1" max="999" step="1"> <span>drams</span></div>
+  <div class="opt sub">Only applies to characters who get thirsty.</div>
+  <div class="ver">Qud HUD v<span id="ver"></span></div>
+</section>
+<div id="foot"><span id="link">Not linked</span><span class="right"><span>Drag ≡ to move a panel, R resets layout. + / - to resize, 0 resets size.</span><button type="button" id="optBtn" aria-expanded="false" aria-controls="opts">☼ Options</button></span></div>
+
+<script>
+(function(){
+'use strict';
+var PAL={k:'#0f3b3a',K:'#155352',r:'#a64a2e',R:'#d74200',g:'#009403',G:'#00c420',b:'#0048bd',B:'#0096ff',
+  c:'#40a4b9',C:'#77bfcf',m:'#b154cf',M:'#da5bd6',w:'#98875f',W:'#cfc041',y:'#b1c9c3',Y:'#ffffff',o:'#f15f22',O:'#e99f10'};
+var SHADERS={fiery:'#d74200',icy:'#77bfcf',freezing:'#77bfcf',poisonous:'#00c420',rainbow:'#da5bd6',
+  hologram:'#0096ff',psionic:'#b154cf',metamorphic:'#da5bd6',sparking:'#cfc041',zetachrome:'#da5bd6',
+  crysteel:'#77bfcf',shade:'#155352',rules:'#77bfcf',paisley:'#da5bd6',chaotic:'#da5bd6',glotrot:'#a64a2e'};
+
+var PAGE_VERSION='__VERSION__';
+var OPTS_KEY='qudhud.opts';
+var opts={waterWarn:true,waterMin:8};
+try{var so=JSON.parse(localStorage.getItem(OPTS_KEY));if(so){for(var k in opts)if(k in so)opts[k]=so[k];}}catch(e){}
+
+function esc(s){return String(s).replace(/[&<>'"]/g,function(c){
+  return {'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c];});}
+
+// Renders Qud color markup: {{X|text}}, &X foreground, ^X background, && and ^^ escapes.
+function qud(s){
+  if(s===null||s===undefined)return '';
+  s=String(s);
+  var out='',buf='',cur=null,stack=[];
+  function flush(){if(!buf)return;out+=cur?'<span style="color:'+cur+'">'+esc(buf)+'</span>':esc(buf);buf='';}
+  for(var i=0;i<s.length;i++){
+    var c=s.charAt(i),n=s.charAt(i+1);
+    if(c==='{'&&n==='{'){
+      var bar=s.indexOf('|',i+2),close=s.indexOf('}',i+2);
+      if(bar>i&&bar-i<66&&(close<0||close>bar)){
+        flush();stack.push(cur);
+        var name=s.substring(i+2,bar);
+        var col=PAL[name]||SHADERS[name]||SHADERS[name.toLowerCase()];
+        if(!col&&name.charAt(1)==='-')col=PAL[name.charAt(0)];
+        cur=col||cur;i=bar;continue;
+      }
+    }
+    if(c==='}'&&n==='}'&&stack.length){flush();cur=stack.pop();i++;continue;}
+    if((c==='&'||c==='^')&&n){
+      if(n===c){buf+=c;i++;continue;}
+      if(PAL[n]){if(c==='&'){flush();cur=PAL[n];}i++;continue;}
+    }
+    buf+=c;
+  }
+  flush();return out;
+}
+function plain(s){var d=document.createElement('div');d.innerHTML=qud(s);return d.textContent;}
+function $(id){return document.getElementById(id);}
+function num(v){return (v===null||v===undefined)?'?':String(v);}
+function sign(v){return v>0?'+'+v:String(v);}
+function pctColor(p){return p>0.5?'#00c420':p>0.25?'#cfc041':'#d74200';}
+function bar(cur,max,color,cls){
+  var p=max>0?Math.max(0,Math.min(1,cur/max)):0;
+  return '<div class="bar '+(cls||'')+'"><i style="width:'+(p*100).toFixed(1)+'%;--c:'+color+'"></i></div>';
+}
+function turns(t){
+  if(t===null||t===undefined||t<=0)return '';
+  if(t>=9999)return '<span class="dim">\u221E</span>';
+  return t+(t===1?' turn':' turns');
+}
+function row(l,r,cls){return '<div class="row '+(cls||'')+'"><span>'+l+'</span><span class="r">'+r+'</span></div>';}
+function empty(t){return '<div class="empty">'+esc(t)+'</div>';}
+
+function renderHead(d){
+  var p=d.player||{};
+  var sub=[p.genotype,p.subtype].filter(Boolean).map(esc).join(' ');
+  var xp='';
+  if(p.xpNext){
+    var floor=(typeof p.xpPrev==='number'&&p.xpPrev<p.xpNext)?p.xpPrev:0;
+    xp='<div class="dim" style="margin-top:.35rem">XP '+num(p.xp)+' / '+num(p.xpNext)+'</div>'+bar(p.xp-floor,p.xpNext-floor,'#40a4b9');
+  }
+  $('who').innerHTML='<div class="name">'+qud(p.name||'Unknown')+'</div><div class="sub">Level '+num(p.level)+(sub?' '+sub:'')+'</div>'+xp;
+
+  var hp=p.hp||0,mx=p.hpMax||0,pc=mx>0?hp/mx:0,col=pctColor(pc);
+  $('vitals').innerHTML='<div class="hpnum"><span class="dim">Hit points</span><span><b style="color:'+col+'">'+hp+'</b> <span class="dim">/ '+mx+'</span></span></div>'+bar(hp,mx,col,'hpbar');
+
+  var z=d.zone||{},c=d.clock||{},h='';
+  if(z.name)h+='<div class="zname">'+qud(z.name)+'</div>';
+  if(z.depth>0)h+='<div>'+z.depth+(z.depth===1?' stratum':' strata')+' deep</div>';
+  if(c.time)h+='<div class="dim">'+qud(c.time)+'</div>';
+  if(c.day||c.month)h+='<div class="dim">'+[c.day,c.month].filter(Boolean).map(qud).join(' of ')+'</div>';
+  $('place').innerHTML=h;
+}
+
+function localAlerts(d){
+  var s=d.survival||{},out=[];
+  if(opts.waterWarn&&s.water&&s.drams!==null&&s.drams!==undefined){
+    if(s.drams<=0)out.push({sev:2,text:'No fresh water left'});
+    else if(s.drams<=opts.waterMin)out.push({sev:2,text:'Fresh water low: '+s.drams+(s.drams===1?' dram':' drams')});
+  }
+  return out;
+}
+function allAlerts(d){
+  return (d.alerts||[]).concat(localAlerts(d)).sort(function(a,b){return b.sev-a.sev;});
+}
+var QUIPS=[
+  'Live and drink, wanderer.',
+  'The salt wind is quiet. For now.',
+  'Nothing stirs but the qudzu.',
+  'No snapjaws howl. Savor it.',
+  'Rest a moment. The Spindle will still be there.',
+  'The watervine sways in Joppa, as it always has.',
+  'Even the sultans had quiet days. Few, but some.',
+  'Nothing hunts you. Nothing you can see, anyway.',
+  'The ruins keep their secrets a little longer.',
+  'A dromad caravan plods somewhere across the salt.',
+  'The canyons hold their breath.',
+  'Take stock. Tinker. Brew something questionable.',
+  'Silence, save for the hum of old machines.',
+  'The sun beats on the salt flats. Nothing else does.',
+  'An uneventful moment is its own kind of relic.',
+  'Drink deep while the drinking is easy.',
+  'The Six Day Stilt stands, and so do you.',
+  'No omens. Or none worth heeding.',
+  'Qud is patient. Be patient too.',
+  'Tend your gear. Mind your water. Carry on.',
+  'Even the qudzu seems to rest.',
+  'The rust waits for no one, but it can wait for you.',
+  'Beetles skitter. Salt drifts. All is well enough.',
+  'Carry on, wanderer.',
+  'Nothing gnaws at you. Enjoy the novelty.',
+  'The ancient dead sleep soundly beneath your feet.',
+  'Your heart beats steady. The world turns slow.',
+  'A glowfish drifts somewhere in brackish dark.',
+  'The tinkers of Grit Gate would call this a good hour.',
+  'Count your drams. Count your blessings. Mostly drams.',
+  'The stars over Qud turn, bright and indifferent.',
+  'For once, the world asks nothing of you.'
+];
+var quip=null;
+// A new line is chosen each time things go quiet, then held so it does not flicker every turn.
+function pickQuip(){
+  var q;
+  do{q=QUIPS[Math.floor(Math.random()*QUIPS.length)];}while(QUIPS.length>1&&q===quip);
+  return q;
+}
+var quietLast=null;
+function renderWarn(d){
+  var a=allAlerts(d),top=0,glyph={3:'!!',2:'!',1:'\u00BB'};
+  a.forEach(function(x){if(x.sev>top)top=x.sev;});
+  $('warn').className='panel'+(top?' lvl'+top:'');
+  if(!a.length){
+    if(quietLast===null)quietLast=quip=pickQuip();
+    $('warnBody').innerHTML='<div class="ok">Nothing pressing.</div><div class="quip">'+esc(quip)+'</div>';
+    return;
+  }
+  quietLast=null;
+  $('warnBody').innerHTML='<ul>'+a.map(function(x){
+    return '<li class="s'+x.sev+'"><span class="g">'+glyph[x.sev]+'</span>'+esc(x.text)+'</li>';
+  }).join('')+'</ul>';
+}
+
+function renderEffects(d){
+  var fx=d.effects||[];
+  if(!fx.length){$('effects').innerHTML=empty('No active effects.');return;}
+  $('effects').innerHTML=fx.map(function(f){
+    var cls=f.disease?'dis':f.negative?'bad':'good';
+    return '<div class="item fx '+cls+'">'+row('<span class="nm">'+qud(f.name)+'</span>',turns(f.duration))+
+      (f.details?'<div class="det">'+qud(f.details)+'</div>':'')+'</div>';
+  }).join('');
+}
+
+function renderAbilities(d){
+  var ab=d.abilities||[];
+  if(!ab.length){$('abilities').innerHTML=empty('No activated abilities.');return;}
+  function cooling(x){return x.enabled&&x.cooldown;}
+  function left(x){return x.cooldownTurns>0?x.cooldownTurns:1e9;}
+  var cool=ab.filter(cooling).sort(function(a,b){return left(a)-left(b);});
+  var rest=ab.filter(function(x){return !cooling(x);}).sort(function(a,b){return (b.enabled?1:0)-(a.enabled?1:0);});
+  function one(x){
+    var r,cls='ab';
+    if(!x.enabled){r='disabled';cls+=' off';}
+    else if(x.cooldown){cls+=' cool';r=x.cooldownTurns>0?x.cooldownTurns+(x.cooldownTurns===1?' turn':' turns'):'cooling';}
+    else if(x.toggleable){r=x.toggled?'on':'off';}
+    else r='ready';
+    return row(qud(x.name),esc(r),cls);
+  }
+  $('abilities').innerHTML=cool.map(one).join('')+(cool.length&&rest.length?'<div class="sep"></div>':'')+rest.map(one).join('');
+}
+
+function renderFoes(d){
+  var f=d.hostiles;
+  if(f===null||f===undefined){$('foes').innerHTML=empty('Hostile tracking unavailable in this game version.');return;}
+  if(!f.length){$('foes').innerHTML=empty('No hostiles in sight.');return;}
+  $('foes').innerHTML=f.map(function(x){
+    var pc=x.hpMax>0?x.hp/x.hpMax:0;
+    return '<div class="item foe'+(x.distance<=1?' adj':'')+'">'+
+      row(qud(x.name)+' <span class="dim">L'+num(x.level)+'</span>'+(x.rating?' '+qud(x.rating):''),
+          '<span class="dist">'+(x.distance<=1?'adjacent':x.distance+' away')+'</span>')+
+      bar(x.hp,x.hpMax,pctColor(pc),'hp')+'</div>';
+  }).join('');
+}
+
+function renderGear(d){
+  var g=d.gear||{},h='';
+  (g.missing||[]).forEach(function(m){h+=row('<span style="color:#d74200">Missing '+esc(m)+'</span>','');});
+  (g.issues||[]).forEach(function(x){h+=row(qud(x.item),qud(x.issue));});
+  (g.cells||[]).forEach(function(c){
+    if(c.empty){h+=row(qud(c.item),'<span style="color:#e99f10">no cell</span>');return;}
+    var p=c.max>0?c.charge/c.max:0;
+    h+='<div class="item">'+row(qud(c.item),'<span style="color:'+pctColor(p)+'">'+Math.round(p*100)+'%</span>')+bar(c.charge,c.max,pctColor(p),'hp')+'</div>';
+  });
+  $('gear').innerHTML=h||empty('Gear in good order.');
+}
+
+function renderAttrs(d){
+  $('attrs').innerHTML='<div class="attrs">'+(d.attributes||[]).map(function(a){
+    var cls=a.value<a.base?'lo':a.value>a.base?'hi':'';
+    return '<div class="attr '+cls+'"><div class="k">'+esc(a.label)+'</div><div class="v">'+a.value+'</div><div class="m">'+sign(a.mod)+'</div></div>';
+  }).join('')+'</div>';
+}
+
+function renderCombat(d){
+  var c=d.combat||{},r=d.resist||{};
+  function st(k,v,col){return '<div><div class="k">'+k+'</div><div class="v"'+(col?' style="color:'+col+'"':'')+'>'+num(v)+'</div></div>';}
+  $('combat').innerHTML='<div class="stats">'+st('AV',c.av)+st('DV',c.dv)+st('MA',c.ma)+st('QN',c.quickness)+st('MS',c.moveSpeed)+'</div>'+
+    '<div class="stats res" style="grid-template-columns:repeat(4,1fr)">'+st('Heat',r.heat,'#d74200')+st('Cold',r.cold,'#77bfcf')+st('Acid',r.acid,'#00c420')+st('Elec',r.elec,'#cfc041')+'</div>';
+}
+
+function renderSurvival(d){
+  var s=d.survival||{},pt=d.points||{},h='';
+  if(s.water)h+=row('Thirst',qud(s.water));
+  if(s.food)h+=row('Hunger',qud(s.food));
+  if(s.drams!==null&&s.drams!==undefined){
+    var low=opts.waterWarn&&s.water&&s.drams<=opts.waterMin;
+    h+=row('Fresh water','<span'+(low?' style="color:#e99f10"':'')+'>'+s.drams+(s.drams===1?' dram':' drams')+'</span>');
+  }
+  if(s.temp!==null&&s.temp!==undefined){
+    var tc=(s.flame&&s.temp>=s.flame*0.8)?'#d74200':(s.freeze!==null&&s.freeze!==undefined&&s.temp<=s.freeze+15)?'#77bfcf':'';
+    h+=row('Temperature','<span'+(tc?' style="color:'+tc+'"':'')+'>'+s.temp+'\u00B0</span>');
+  }
+  if(s.maxWeight){
+    var wp=s.weight/s.maxWeight;
+    h+='<div class="item">'+row('Carried',s.weight+' / '+s.maxWeight+' lbs.')+bar(s.weight,s.maxWeight,wp>0.9?'#d74200':wp>0.75?'#cfc041':'#40a4b9','hp')+'</div>';
+  }
+  var pts=[];
+  if(pt.ap>0)pts.push(pt.ap+' attribute');
+  if(pt.sp>0)pts.push(pt.sp+' skill');
+  if(pt.mp>0)pts.push(pt.mp+' mutation');
+  if(pts.length)h+='<div class="item" style="color:#77bfcf">Unspent points: '+esc(pts.join(', '))+'</div>';
+  $('survival').innerHTML=h||empty('No survival data.');
+}
+
+var lastPayload=null;
+function render(p){
+  lastPayload=p;
+  var d=p.data||{};
+  document.body.classList.remove('waiting');
+  var parts=[renderHead,renderWarn,renderEffects,renderAbilities,renderFoes,renderGear,renderAttrs,renderCombat,renderSurvival];
+  parts.forEach(function(fn){try{fn(d);}catch(e){if(window.console)console.error(e);}});
+  var name=plain((d.player||{}).name||'');
+  document.title=(allAlerts(d).some(function(a){return a.sev===3;})?'!! ':'')+(name||'Qud HUD');
+}
+
+// Polling: re-inject the data script with a cache buster. Works from file:// without a server.
+var lastSeq=null,loading=false;
+function setLink(state,text){var l=$('link');l.className=state;l.textContent=text;}
+function poll(){
+  if(loading)return;loading=true;
+  var s=document.createElement('script');
+  s.src='hud_data.js?t='+Date.now();
+  s.onload=function(){
+    loading=false;s.parentNode.removeChild(s);
+    var p=window.QUD_HUD;
+    if(!p){setLink('off','Data file unreadable');return;}
+    // The mod rewrites this page when the game loads; reload once if an older copy is still open.
+    if(p.version&&p.version!==PAGE_VERSION){
+      var tried=null;try{tried=sessionStorage.getItem('qudhud.reloadFor');}catch(e){}
+      if(tried!==p.version){try{sessionStorage.setItem('qudhud.reloadFor',p.version);}catch(e){}location.reload();return;}
+      setLink('off','This page is v'+PAGE_VERSION+' but the mod is v'+p.version+'. Reopen hud.html.');return;
+    }
+    var key=p.seq+'|'+p.stamp;if(key!==lastSeq){lastSeq=key;render(p);}
+    setLink('on','Linked. Last change '+(p.stamp||'?'));
+  };
+  s.onerror=function(){loading=false;s.parentNode.removeChild(s);setLink('off','Waiting for Caves of Qud');};
+  document.head.appendChild(s);
+}
+
+var scale=1;
+try{scale=parseFloat(localStorage.getItem('qudhud.scale'))||1;}catch(e){}
+function applyScale(){document.documentElement.style.setProperty('--scale',scale);try{localStorage.setItem('qudhud.scale',scale);}catch(e){}}
+applyScale();
+function typing(e){return e.target&&/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName);}
+document.addEventListener('keydown',function(e){
+  if(typing(e))return;
+  if(e.key==='+'||e.key==='=')scale=Math.min(3,+(scale+0.1).toFixed(2));
+  else if(e.key==='-'||e.key==='_')scale=Math.max(0.5,+(scale-0.1).toFixed(2));
+  else if(e.key==='0')scale=1;
+  else return;
+  applyScale();
+});
+
+// Panel layout: drag by the grip, or focus the grip and use arrow keys.
+var LAYOUT_KEY='qudhud.layout';
+var zones=[].slice.call(document.querySelectorAll('.zone'));
+function panelsIn(z){return [].slice.call(z.children).filter(function(c){return c.classList.contains('panel');});}
+function snapshot(){var o={};zones.forEach(function(z){o[z.dataset.zone]=panelsIn(z).map(function(p){return p.dataset.panel;});});return o;}
+function apply(layout){
+  if(!layout)return;
+  zones.forEach(function(z){
+    (layout[z.dataset.zone]||[]).forEach(function(id){
+      var p=document.querySelector('[data-panel=\''+id+'\']');
+      if(p)z.appendChild(p);
+    });
+  });
+}
+function save(){try{localStorage.setItem(LAYOUT_KEY,JSON.stringify(snapshot()));}catch(e){}}
+var defaultLayout=snapshot();
+try{apply(JSON.parse(localStorage.getItem(LAYOUT_KEY)));}catch(e){}
+
+// Empty columns collapse so the rest widen; during a drag they reappear as drop targets.
+var colsEl=$('cols'),colZones=zones.filter(function(z){return z.parentNode===colsEl;});
+function colCap(){var w=window.innerWidth;return w<=760?1:w<=1200?2:3;}
+function refreshCols(){
+  var dragging=document.body.classList.contains('dragging'),used=0;
+  colZones.forEach(function(z){
+    var show=dragging||panelsIn(z).length>0;
+    z.classList.toggle('vacant',!show);
+    if(show)used++;
+  });
+  colsEl.style.gridTemplateColumns='repeat('+Math.max(1,Math.min(used,colCap()))+',minmax(0,1fr))';
+}
+refreshCols();
+window.addEventListener('resize',refreshCols);
+
+function settle(p){p.classList.remove('moved');void p.offsetWidth;p.classList.add('moved');}
+
+function zoneAt(x,y){
+  var best=null,bestD=Infinity;
+  zones.forEach(function(z){
+    var r=z.getBoundingClientRect();
+    var dx=x<r.left?r.left-x:x>r.right?x-r.right:0;
+    var dy=y<r.top?r.top-y:y>r.bottom?y-r.bottom:0;
+    var d=dx*dx+dy*dy;
+    if(d<bestD){bestD=d;best=z;}
+  });
+  return best;
+}
+
+var drag=null,marker=$('marker');
+// Nothing reflows during a drag: the panel stays as a ghost and a gold line marks the drop spot.
+function target(x,y){
+  var z=zoneAt(x,y);if(!z)return null;
+  var list=panelsIn(z),before=null;
+  for(var i=0;i<list.length;i++){
+    var r=list[i].getBoundingClientRect();
+    if(y<r.top+r.height/2){before=list[i];break;}
+  }
+  return {zone:z,before:before,list:list};
+}
+function place(e){
+  drag.clone.style.left=(e.clientX-drag.dx)+'px';
+  drag.clone.style.top=(e.clientY-drag.dy)+'px';
+  var t=target(e.clientX,e.clientY);drag.t=t;if(!t)return;
+  var zr=t.zone.getBoundingClientRect(),y;
+  if(t.before)y=t.before.getBoundingClientRect().top-8;
+  else if(t.list.length)y=t.list[t.list.length-1].getBoundingClientRect().bottom+4;
+  else y=zr.top+4;
+  marker.style.left=zr.left+'px';marker.style.width=zr.width+'px';marker.style.top=y+'px';
+}
+function onMove(e){if(drag)place(e);}
+function endDrag(){
+  window.removeEventListener('pointermove',onMove);
+  window.removeEventListener('pointerup',onUp);
+  window.removeEventListener('pointercancel',onCancel);
+  document.body.classList.remove('dragging');
+  drag.clone.parentNode.removeChild(drag.clone);
+  drag.panel.classList.remove('ghost');
+}
+function onUp(){
+  if(!drag)return;
+  var p=drag.panel,t=drag.t;
+  endDrag();
+  if(t&&t.before!==p){
+    if(t.before)t.zone.insertBefore(p,t.before);else t.zone.appendChild(p);
+    save();settle(p);
+  }
+  refreshCols();
+  drag=null;
+}
+function onCancel(){if(!drag)return;endDrag();drag=null;refreshCols();}
+function onDown(e,p){
+  if(e.button!==undefined&&e.button!==0)return;
+  e.preventDefault();
+  var r=p.getBoundingClientRect();
+  var clone=p.cloneNode(true);
+  [].slice.call(clone.querySelectorAll('[id]')).forEach(function(n){n.removeAttribute('id');});
+  clone.removeAttribute('id');clone.removeAttribute('data-panel');
+  clone.classList.add('lifted');clone.style.width=r.width+'px';
+  document.body.appendChild(clone);
+  p.classList.add('ghost');
+  document.body.classList.add('dragging');
+  refreshCols();
+  drag={panel:p,clone:clone,dx:e.clientX-r.left,dy:e.clientY-r.top,t:null};
+  place(e);
+  window.addEventListener('pointermove',onMove);
+  window.addEventListener('pointerup',onUp);
+  window.addEventListener('pointercancel',onCancel);
+}
+function onKey(e,p,g){
+  var z=p.parentNode,zi=zones.indexOf(z),list=panelsIn(z),i=list.indexOf(p);
+  if(e.key==='ArrowUp'&&i>0)z.insertBefore(p,list[i-1]);
+  else if(e.key==='ArrowDown'&&i<list.length-1)z.insertBefore(list[i+1],p);
+  else if(e.key==='ArrowLeft'&&zi>0)zones[zi-1].appendChild(p);
+  else if(e.key==='ArrowRight'&&zi<zones.length-1)zones[zi+1].appendChild(p);
+  else return;
+  e.preventDefault();e.stopPropagation();save();refreshCols();settle(p);g.focus();
+}
+[].slice.call(document.querySelectorAll('.panel[data-panel]')).forEach(function(p){
+  var g=document.createElement('button');
+  g.className='grip';g.type='button';g.textContent='\u2261';
+  var title=p.querySelector('h2').textContent;
+  g.title='Drag to move '+title+'. Arrow keys also move it.';
+  g.setAttribute('aria-label','Move '+title+' panel');
+  g.addEventListener('pointerdown',function(e){onDown(e,p);});
+  g.addEventListener('keydown',function(e){onKey(e,p,g);});
+  p.appendChild(g);
+});
+document.addEventListener('keydown',function(e){
+  if(typing(e)||(e.key!=='r'&&e.key!=='R'))return;
+  if(e.ctrlKey||e.metaKey||e.altKey)return;
+  apply(defaultLayout);save();refreshCols();
+});
+
+// Options popover.
+var optsEl=$('opts'),optBtn=$('optBtn'),waterMin=$('waterMin');
+function saveOpts(){try{localStorage.setItem(OPTS_KEY,JSON.stringify(opts));}catch(e){}if(lastPayload)render(lastPayload);}
+function syncOpts(){
+  [].slice.call(optsEl.querySelectorAll('.tog')).forEach(function(t){
+    var on=!!opts[t.dataset.opt];t.setAttribute('aria-checked',on);t.textContent=on?'[X]':'[ ]';
+  });
+  waterMin.value=opts.waterMin;waterMin.disabled=!opts.waterWarn;
+  $('waterSub').classList.toggle('off',!opts.waterWarn);
+}
+[].slice.call(optsEl.querySelectorAll('.tog')).forEach(function(t){
+  t.addEventListener('click',function(){opts[t.dataset.opt]=!opts[t.dataset.opt];syncOpts();saveOpts();});
+  var lbl=t.parentNode.querySelector('label');
+  if(lbl)lbl.addEventListener('click',function(){t.click();});
+});
+waterMin.addEventListener('change',function(){
+  var v=parseInt(waterMin.value,10);
+  opts.waterMin=isNaN(v)?8:Math.max(1,Math.min(999,v));syncOpts();saveOpts();
+});
+function toggleOpts(show){
+  optsEl.hidden=!show;optBtn.setAttribute('aria-expanded',show);
+  if(show)optsEl.querySelector('.tog').focus();
+}
+optBtn.addEventListener('click',function(){toggleOpts(optsEl.hidden);});
+document.addEventListener('keydown',function(e){if(e.key==='Escape'&&!optsEl.hidden){toggleOpts(false);optBtn.focus();}});
+document.addEventListener('pointerdown',function(e){
+  if(!optsEl.hidden&&!optsEl.contains(e.target)&&e.target!==optBtn)toggleOpts(false);
+});
+syncOpts();
+$('ver').textContent=PAGE_VERSION;
+
+window.__qudhud={qud:qud,render:render};
+poll();setInterval(poll,250);
+})();
+</script>
+</body>
+</html>
