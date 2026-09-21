@@ -607,6 +607,16 @@ namespace QudHUD
             catch (Exception ex) { Hud.Log("rating", ex); return ""; }
         }
 
+        // GameObject.IsVisible() reflects things like stealth/invisibility, not real line of sight -
+        // a creature behind a closed door still reads as visible. Cell.IsVisible() is the actual
+        // per-turn FOV/light check the game itself renders from, so prefer that when it's available.
+        static bool CurrentlyVisible(object o)
+        {
+            object cellVisible = R.Call(R.Get(o, "CurrentCell"), "IsVisible");
+            if (cellVisible is bool) return (bool)cellVisible;
+            return R.Bool(R.Call(o, "IsVisible"));
+        }
+
         static void BuildHostiles(GameObject p, Dictionary<string, object> d, List<Dictionary<string, object>> alerts)
         {
             object zone = R.Get(p, "CurrentZone");
@@ -624,7 +634,7 @@ namespace QudHUD
                 object hostile = R.Call(o, "IsHostileTowards", p);
                 if (hostile == null) hostile = R.Call(R.Call(o, "GetPart", "Brain"), "IsHostileTowards", p);
                 if (!R.Bool(hostile)) continue;
-                if (!R.Bool(R.Call(o, "IsVisible"))) continue;
+                if (!CurrentlyVisible(o)) continue;
                 found.Add(new Dictionary<string, object> {
                     { "name", Name(o) },
                     { "level", SV(o, "Level") },
