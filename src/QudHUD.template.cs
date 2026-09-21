@@ -617,6 +617,22 @@ namespace QudHUD
             return R.Bool(R.Call(o, "IsVisible"));
         }
 
+        static readonly string[] Compass = { "E", "NE", "N", "NW", "W", "SW", "S", "SE" };
+
+        // 8-way compass direction from p to o, or "here" for the same tile. Null if positions
+        // aren't available. hud.html maps this to an arrow glyph.
+        static string Direction(GameObject p, object o)
+        {
+            object pc = R.Get(p, "CurrentCell"), oc = R.Get(o, "CurrentCell");
+            if (pc == null || oc == null) return null;
+            int dx = R.Int(R.Get(oc, "X"), 0) - R.Int(R.Get(pc, "X"), 0);
+            int dy = R.Int(R.Get(oc, "Y"), 0) - R.Int(R.Get(pc, "Y"), 0);
+            if (dx == 0 && dy == 0) return "here";
+            double deg = Math.Atan2(-dy, dx) * (180.0 / Math.PI);
+            if (deg < 0) deg += 360;
+            return Compass[(int)Math.Round(deg / 45.0) % 8];
+        }
+
         static void BuildHostiles(GameObject p, Dictionary<string, object> d, List<Dictionary<string, object>> alerts)
         {
             object zone = R.Get(p, "CurrentZone");
@@ -640,6 +656,7 @@ namespace QudHUD
                     { "level", SV(o, "Level") },
                     { "rating", Rating(o, p) },
                     { "distance", R.Int(R.Call(p, "DistanceTo", o), 99) },
+                    { "dir", Direction(p, o) },
                     { "hp", SV(o, "Hitpoints") },
                     { "hpMax", SB(o, "Hitpoints") }
                 });

@@ -1,5 +1,8 @@
 # Changelog
 
+## Unreleased
+- Added: a compass arrow (or a dot for the same tile) after the distance in Hostiles in sight, showing each hostile's direction relative to you.
+
 ## 1.0.2
 - Fixed: a hostile stayed listed in Hostiles in sight / Pressing matters after it was no longer in line of sight (e.g. behind a closed door). Visibility now uses the game's per-cell FOV check instead of the creature's own IsVisible(), which reflects stealth/invisibility rather than real line of sight.
 

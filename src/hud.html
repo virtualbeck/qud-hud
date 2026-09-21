@@ -371,15 +371,16 @@ function renderAbilities(d){
   $('abilities').innerHTML=cool.map(one).join('')+(cool.length&&rest.length?'<div class="sep"></div>':'')+rest.map(one).join('');
 }
 
+var DIR_GLYPH={N:'↑',NE:'↗',E:'→',SE:'↘',S:'↓',SW:'↙',W:'←',NW:'↖',here:'•'};
 function renderFoes(d){
   var f=d.hostiles;
   if(f===null||f===undefined){$('foes').innerHTML=empty('Hostile tracking unavailable in this game version.');return;}
   if(!f.length){$('foes').innerHTML=empty('No hostiles in sight.');return;}
   $('foes').innerHTML=f.map(function(x){
-    var pc=x.hpMax>0?x.hp/x.hpMax:0;
+    var pc=x.hpMax>0?x.hp/x.hpMax:0,dir=DIR_GLYPH[x.dir]||'';
     return '<div class="item foe'+(x.distance<=1?' adj':'')+'">'+
       row(qud(x.name)+' <span class="dim">L'+num(x.level)+'</span>'+(x.rating?' '+qud(x.rating):''),
-          '<span class="dist">'+(x.distance<=1?'adjacent':x.distance+' away')+'</span>')+
+          '<span class="dist">'+(x.distance<=1?'adjacent':x.distance+' away')+(dir?' '+dir:'')+'</span>')+
       bar(x.hp,x.hpMax,pctColor(pc),'hp')+'</div>';
   }).join('');
 }
