@@ -617,6 +617,10 @@ namespace QudHUD
             foreach (object o in objs)
             {
                 if (o == null || ReferenceEquals(o, p)) continue;
+                // A creature can linger in the zone's Brain list after death (seen with holograms);
+                // treat 0-or-below Hitpoints as dead regardless of why it wasn't removed.
+                object hpVal = SVOrNull(o, "Hitpoints");
+                if (hpVal != null && (int)hpVal <= 0) continue;
                 object hostile = R.Call(o, "IsHostileTowards", p);
                 if (hostile == null) hostile = R.Call(R.Call(o, "GetPart", "Brain"), "IsHostileTowards", p);
                 if (!R.Bool(hostile)) continue;

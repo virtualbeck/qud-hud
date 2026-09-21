@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.0.1
+- Fixed: a killed creature (e.g. holograms that linger in the zone after death) could still show up in Hostiles in sight and Pressing matters. Hostiles are now dropped once their Hitpoints reach 0.
+
 ## 1.0.0
 First public release.
 - Second monitor display page with Pressing matters, effects, abilities, hostiles, gear, attributes, combat and survival panels.
