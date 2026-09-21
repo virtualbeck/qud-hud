@@ -14,6 +14,20 @@ Requires Python 3.8+.
     python build.py              # dist/QudHUD and dist/QudHUD-vX.Y.Z.zip
     python build.py --install    # also copies into your Caves of Qud Mods folder
 
+## Testing before publishing
+`--install` copies straight into your local Mods folder and never touches Steam, so use it to iterate
+before publishing:
+
+1. If you're subscribed to the [Workshop item](https://steamcommunity.com/sharedfiles/filedetails/?id=3805872225),
+   unsubscribe while testing. Your local dev copy and the Workshop-subscribed copy share the same mod
+   ID, and having both installed at once can make the game load a conflicting mix of the two.
+2. `python build.py --install`, launch the game, and check the Options screen shows the version you
+   just built (not a stale cached one).
+3. Edit, rerun `python build.py --install`, reload and retest — repeat as needed. No git or Steam
+   involvement required for this loop.
+4. Once satisfied, follow the release checklist below, then resubscribe (or check the Workshop content
+   folder) to confirm the published version matches what you tested.
+
 ## Release checklist
 1. Bump `VERSION` and add a section to `CHANGELOG.md`.
 2. `python build.py --install`, launch the game, and check the display page and Options version.
