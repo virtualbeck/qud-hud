@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.3
 - Added: a compass arrow (or a dot for the same tile) after the distance in Hostiles in sight, showing each hostile's direction relative to you.
 
 ## 1.0.2
