@@ -7,13 +7,21 @@
 
 The version comes from the VERSION file and is stamped into the manifest,
 the C# code and the display page.
+  python build.py --workshop    build, then publish dist/QudHUD to the Steam Workshop via SteamCMD
+
+--workshop needs `steamcmd` on PATH and the STEAM_USER env var set to a Steam
+account. SteamCMD will prompt for the password and, on first login from this
+machine, a Steam Guard code. See the "Automated Workshop upload" section in
+README.md.
 """
-import os, re, shutil, sys, zipfile
+import json, os, re, shutil, subprocess, sys, zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 DIST = ROOT / "dist"
 MOD_ID = "QudHUD"
+STEAM_APP_ID = "333640"  # Caves of Qud
+WORKSHOP_JSON = ROOT / "mod/workshop.json"
 
 
 def mods_dir():
@@ -55,6 +63,81 @@ def build():
     return out
 
 
+def changelog_head():
+    """The bullet list under the top-most ## heading in CHANGELOG.md."""
+    lines = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8").splitlines()
+    started, out = False, []
+    for line in lines:
+        if line.startswith("## "):
+            if started:
+                break
+            started = True
+            continue
+        if started:
+            out.append(line)
+    return "\n".join(out).strip()
+
+
+def vdf_escape(s):
+    return s.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def build_vdf(folder, version):
+    """Write dist/workshop_item.vdf, a SteamCMD `workshop_build_item` script.
+
+    Reuses the WorkshopId from mod/workshop.json (written by the in-game
+    uploader, see README) if one exists, so this updates the same item
+    instead of creating a duplicate.
+    """
+    published_id = "0"
+    if WORKSHOP_JSON.exists():
+        published_id = str(json.loads(WORKSHOP_JSON.read_text(encoding="utf-8")).get("WorkshopId", 0))
+
+    description = (ROOT / "workshop_description.txt").read_text(encoding="utf-8").strip()
+    fields = {
+        "appid": STEAM_APP_ID,
+        "publishedfileid": published_id,
+        "contentfolder": str(folder),
+        "previewfile": str(ROOT / "mod/preview.png"),
+        "visibility": "0",  # Valve's ERemoteStoragePublishedFileVisibility: 0 = public
+        "title": "Qud HUD",
+        "description": description,
+        "changenote": changelog_head() or f"v{version}",
+    }
+    body = "\n".join(f'\t"{k}"\t\t"{vdf_escape(v)}"' for k, v in fields.items())
+    vdf_path = DIST / "workshop_item.vdf"
+    vdf_path.write_text(f'"workshopitem"\n{{\n{body}\n}}\n', encoding="utf-8")
+    return vdf_path
+
+
+def publish_workshop(folder, version):
+    user = os.environ.get("STEAM_USER")
+    if not user:
+        sys.exit("Set STEAM_USER to your Steam account name to publish to the Workshop.")
+    if shutil.which("steamcmd") is None:
+        sys.exit("steamcmd not found on PATH. Install it, then re-run with --workshop.")
+
+    vdf_path = build_vdf(folder, version)
+    print(f"  wrote {vdf_path}")
+    print("Launching steamcmd (enter your password and Steam Guard code if asked)...")
+    result = subprocess.run(["steamcmd", "+login", user, "+workshop_build_item", str(vdf_path), "+quit"])
+    if result.returncode != 0:
+        sys.exit(f"steamcmd exited with status {result.returncode}")
+    if not WORKSHOP_JSON.exists():
+        print()
+        print("First publish: steamcmd printed a new Workshop item ID above (published file id).")
+        print(f"Create {WORKSHOP_JSON} with that ID, e.g.:")
+        print(json.dumps({
+            "WorkshopId": 0,
+            "Title": "Qud HUD",
+            "Description": (ROOT / "workshop_description.txt").read_text(encoding="utf-8").strip(),
+            "Tags": "UI",
+            "Visibility": "2",
+            "ImagePath": "preview.png",
+        }, indent=2))
+        print("Then commit mod/workshop.json so future builds update the same item.")
+
+
 def install(src, target):
     dest = Path(target) / MOD_ID
     # Keep the Workshop link the game's uploader wrote, if any.
@@ -74,3 +157,5 @@ if __name__ == "__main__":
         i = sys.argv.index("--install")
         target = sys.argv[i + 1] if i + 1 < len(sys.argv) else mods_dir()
         install(folder, target)
+    if "--workshop" in sys.argv:
+        publish_workshop(folder, (ROOT / "VERSION").read_text().strip())

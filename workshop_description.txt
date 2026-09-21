@@ -20,5 +20,5 @@ Drag panels by their ≡ grip to rearrange them. Your layout is saved.
 [list]
 [*]No server or internet connection needed; the page reads a local file.
 [*]Keep the mod enabled for saves made with it.
-[*]Source and issues: GITHUB LINK
+[*]Source and issues: https://github.com/virtualbeck/qud-hud
 [/list]

@@ -30,3 +30,29 @@ Requires the Steam copy of the game.
 
 Keep `"Visibility": "2"` in `workshop.json`, or updates may reset the mod to private.
 If you subscribe to your own Workshop item, move your dev copy out of `Mods` to avoid loading it twice.
+
+## Automated Workshop upload (optional)
+`python build.py --workshop` builds the mod and publishes `dist/QudHUD` via SteamCMD instead of the
+in-game uploader, using `workshop_description.txt` as the description and `mod/preview.png` as the
+preview image. This uses SteamCMD's generic `workshop_build_item` command, which isn't documented by
+Freehold Games specifically — treat it as unofficial and confirm it works before relying on it.
+
+Requires:
+- [SteamCMD](https://developer.valvesoftware.com/wiki/SteamCMD) installed and on `PATH`.
+- `STEAM_USER` set to your Steam account name. SteamCMD prompts for the password and, on first login
+  from a machine, a Steam Guard code (interactive; it caches the session afterward).
+
+First publish: run it once with no `mod/workshop.json` present. SteamCMD prints the new published file
+ID; create `mod/workshop.json` with that ID and commit it:
+
+    {
+      "WorkshopId": 123456789,
+      "Title": "Qud HUD",
+      "Description": "...paste workshop_description.txt...",
+      "Tags": "UI",
+      "Visibility": "2",
+      "ImagePath": "preview.png"
+    }
+
+Every later `--workshop` run reads `WorkshopId` from that file and updates the same item instead of
+creating a new one.
