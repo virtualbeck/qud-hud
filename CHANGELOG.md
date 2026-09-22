@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.0.4
+- Fixed: the display page's Chrome tab grew steadily in memory over long sessions (hundreds of MB after a few hours). Polling now runs once a second instead of four times a second, and the page reloads itself every 10 minutes (layout and options are preserved) to clear out the accumulated overhead from the file:// script-polling technique.
+
 ## 1.0.3
 - Added: a compass arrow (or a dot for the same tile) after the distance in Hostiles in sight, showing each hostile's direction relative to you.
 

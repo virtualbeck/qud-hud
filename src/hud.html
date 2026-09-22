@@ -151,7 +151,7 @@ body.dragging #marker{display:block}
 <div id="wait">
   <div class="panel"><h2>Qud HUD</h2>
     <p>Waiting for Caves of Qud.</p>
-    <p class="dim">Start or load a game with the Qud HUD mod enabled. This page refreshes itself four times a second; keep it open on your second monitor.</p>
+    <p class="dim">Start or load a game with the Qud HUD mod enabled. This page refreshes itself once a second; keep it open on your second monitor.</p>
   </div>
 </div>
 
@@ -648,7 +648,10 @@ syncOpts();
 $('ver').textContent=PAGE_VERSION;
 
 window.__qudhud={qud:qud,render:render};
-poll();setInterval(poll,250);
+poll();setInterval(poll,1000);
+// Periodic reload clears out the engine-level bookkeeping that piles up from hours of
+// script-tag polling (see poll() above); layout/options survive it via localStorage.
+setInterval(function(){location.reload();},10*60*1000);
 })();
 </script>
 </body>
