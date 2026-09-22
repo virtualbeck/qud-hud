@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.5
+- Fixed: the "Linked" light stayed green after the game exited, because `hud_data.js` stays on disk and still loads cleanly. The light now reads the age of the data itself: green when it is current, amber ("No updates for 12m") once nothing has been written for two minutes, red when the file cannot be read at all.
+- Changed: the display page now rebuilds itself every 5 minutes instead of 10, and carries the last reading across the rebuild, so it no longer flashes the waiting screen. Memory held between rebuilds is about 2MB.
+
 ## 1.0.4
 - Fixed: the display page's Chrome tab grew steadily in memory over long sessions (hundreds of MB after a few hours). Polling now runs once a second instead of four times a second, and the page reloads itself every 10 minutes (layout and options are preserved) to clear out the accumulated overhead from the file:// script-polling technique.
 

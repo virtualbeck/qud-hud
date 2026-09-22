@@ -95,6 +95,7 @@ body{
   padding:.35rem 1rem;font-size:.8rem;color:var(--dim);background:var(--void);border-top:1px solid var(--frame)}
 #link::before{content:'\25CF ';color:var(--dim)}
 #link.on::before{color:var(--good)}
+#link.stale::before{color:var(--warn)}
 #link.off::before{color:var(--crit)}
 
 #wait{display:none;max-width:40rem;margin:18vh auto 0;text-align:center}
@@ -448,7 +449,29 @@ function render(p){
 
 // Polling: re-inject the data script with a cache buster. Works from file:// without a server.
 var lastSeq=null,loading=false;
+var STALE_MS=2*60*1000;
 function setLink(state,text){var l=$('link');l.className=state;l.textContent=text;}
+// hud_data.js stays on disk after the game exits, so a script that loads cleanly only proves
+// the file is readable, not that anything is still writing it. Age comes from the payload's own
+// clock (same machine as this page) rather than a page-local timer, so the periodic rebuild
+// further down cannot reset a long-dead link back to a fresh-looking green.
+function stampAge(stamp){
+  var m=/^(\d{1,2}):(\d{2}):(\d{2})$/.exec(String(stamp==null?'':stamp));
+  if(!m)return null;
+  var d=new Date();
+  var age=(d.getHours()*3600+d.getMinutes()*60+d.getSeconds())-((+m[1])*3600+(+m[2])*60+(+m[3]));
+  if(age<0)age+=86400;
+  return age*1000;
+}
+function ageText(ms){
+  var m=Math.round(ms/60000);
+  return m<60?m+'m':Math.floor(m/60)+'h '+(m%60)+'m';
+}
+function showLink(p){
+  var age=stampAge(p.stamp);
+  if(age!==null&&age>=STALE_MS)setLink('stale','No updates for '+ageText(age)+'. Last change '+p.stamp);
+  else setLink('on','Linked. Last change '+(p.stamp||'?'));
+}
 function poll(){
   if(loading)return;loading=true;
   var s=document.createElement('script');
@@ -464,7 +487,7 @@ function poll(){
       setLink('off','This page is v'+PAGE_VERSION+' but the mod is v'+p.version+'. Reopen hud.html.');return;
     }
     var key=p.seq+'|'+p.stamp;if(key!==lastSeq){lastSeq=key;render(p);}
-    setLink('on','Linked. Last change '+(p.stamp||'?'));
+    showLink(p);
   };
   s.onerror=function(){loading=false;s.parentNode.removeChild(s);setLink('off','Waiting for Caves of Qud');};
   document.head.appendChild(s);
@@ -648,10 +671,27 @@ syncOpts();
 $('ver').textContent=PAGE_VERSION;
 
 window.__qudhud={qud:qud,render:render};
+
+// Every poll compiles a script, and V8 keeps several KB of bookkeeping per compile for as long as
+// the document lives - unreachable but never collected - so a long session grows without bound.
+// Rebuilding the document is the only way to hand that back from a file:// page. The last payload
+// and scroll position ride across in sessionStorage so the rebuild does not flash the wait screen.
+var CARRY_KEY='qudhud.carry',FLUSH_MS=5*60*1000,flushedAt=Date.now();
+try{
+  var carry=JSON.parse(sessionStorage.getItem(CARRY_KEY));
+  sessionStorage.removeItem(CARRY_KEY);
+  if(carry&&carry.p&&Date.now()-carry.at<15000){
+    render(carry.p);
+    if(carry.y)window.scrollTo(0,carry.y);
+  }
+}catch(e){}
+setInterval(function(){
+  if(Date.now()-flushedAt<FLUSH_MS||drag||!optsEl.hidden)return;
+  try{sessionStorage.setItem(CARRY_KEY,JSON.stringify({at:Date.now(),y:window.scrollY,p:lastPayload}));}catch(e){}
+  location.reload();
+},30000);
+
 poll();setInterval(poll,1000);
-// Periodic reload clears out the engine-level bookkeeping that piles up from hours of
-// script-tag polling (see poll() above); layout/options survive it via localStorage.
-setInterval(function(){location.reload();},10*60*1000);
 })();
 </script>
 </body>
