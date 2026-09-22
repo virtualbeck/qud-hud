@@ -48,8 +48,13 @@ If you subscribe to your own Workshop item, move your dev copy out of `Mods` to 
 
 ## Automated Workshop upload (optional)
 `python build.py --workshop` builds the mod and publishes `dist/QudHUD` via SteamCMD instead of the
-in-game uploader, using `workshop_description.txt` as the description and `mod/preview.png` as the
-preview image. This uses SteamCMD's generic `workshop_build_item` command, which isn't documented by
+in-game uploader, using `mod/preview.png` as the preview image.
+
+It does not touch the description. SteamCMD's build file is KeyValues, which has no way to express
+a line break inside a value (and honours no escape sequences), so a multi-line description cannot
+survive the trip. `workshop_description.txt` stays the source of truth for the text — paste it into
+the in-game uploader or the item's Steam page when it changes. Leaving the key out means each
+upload keeps whatever description the page already has. This uses SteamCMD's generic `workshop_build_item` command, which isn't documented by
 Freehold Games specifically — treat it as unofficial and confirm it works before relying on it.
 
 Requires:

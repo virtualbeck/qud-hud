@@ -80,15 +80,12 @@ def changelog_head():
     return "\n".join(out).strip()
 
 
-def vdf_escape(s):
-    # A KeyValues quoted value cannot span lines: a raw newline ends the value and the parser
-    # reads the next line as a key. The description and changenote are both multi-line.
-    return (
-        s.replace("\\", "\\\\")
-        .replace('"', '\\"')
-        .replace("\n", "\\n")
-        .replace("\t", "\\t")
-    )
+def vdf_value(s):
+    # steamcmd's KeyValues parser does not honour escape sequences, so a value cannot contain a
+    # quote or a newline at all: both just end it early and the rest of the file is read as keys.
+    # Backslashes stay doubled, which is what every published workshop_build_item example does
+    # and which Windows collapses back when it opens the path.
+    return " ".join(s.replace("\\", "\\\\").replace('"', "'").split())
 
 
 def build_vdf(folder, version):
@@ -102,7 +99,9 @@ def build_vdf(folder, version):
     if WORKSHOP_JSON.exists():
         published_id = str(json.loads(WORKSHOP_JSON.read_text(encoding="utf-8")).get("WorkshopId", 0))
 
-    description = (ROOT / "workshop_description.txt").read_text(encoding="utf-8").strip()
+    # No description field: it is the one value that needs line breaks, and this file format
+    # cannot carry them. Leaving the key out means the item keeps the description already on its
+    # Workshop page, rather than having it flattened into a single paragraph on every upload.
     fields = {
         "appid": STEAM_APP_ID,
         "publishedfileid": published_id,
@@ -110,10 +109,9 @@ def build_vdf(folder, version):
         "previewfile": str(ROOT / "mod/preview.png"),
         "visibility": "0",  # Valve's ERemoteStoragePublishedFileVisibility: 0 = public
         "title": "Qud HUD",
-        "description": description,
         "changenote": changelog_head() or f"v{version}",
     }
-    body = "\n".join(f'\t"{k}"\t\t"{vdf_escape(v)}"' for k, v in fields.items())
+    body = "\n".join(f'\t"{k}"\t\t"{vdf_value(v)}"' for k, v in fields.items())
     vdf_path = DIST / "workshop_item.vdf"
     vdf_path.write_text(f'"workshopitem"\n{{\n{body}\n}}\n', encoding="utf-8")
     return vdf_path
@@ -134,6 +132,7 @@ def publish_workshop(folder, version):
 
     vdf_path = build_vdf(folder, version)
     print(f"  wrote {vdf_path}")
+    print("  the Workshop description is left untouched; edit it on the item's Steam page.")
     print("Launching steamcmd (enter your password and Steam Guard code if asked)...")
     result = subprocess.run(["steamcmd", "+login", user, "+workshop_build_item", str(vdf_path), "+quit"])
     if result.returncode != 0:
