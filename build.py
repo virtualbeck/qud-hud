@@ -65,8 +65,11 @@ def build():
     return out
 
 
-def changelog_head():
-    """The bullet list under the top-most ## heading in CHANGELOG.md."""
+def changelog_bullets():
+    """The entries under the top-most ## heading in CHANGELOG.md, one string each.
+
+    Markdown markup is dropped, since the changenote is shown as plain text.
+    """
     lines = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8").splitlines()
     started, out = False, []
     for line in lines:
@@ -75,9 +78,20 @@ def changelog_head():
                 break
             started = True
             continue
-        if started:
-            out.append(line)
-    return "\n".join(out).strip()
+        if not started:
+            continue
+        line = line.strip().replace("**", "").replace("`", "")
+        if line.startswith("- "):
+            out.append(line[2:].strip())
+        elif line and out:
+            out[-1] += " " + line  # a wrapped continuation of the bullet above
+    return out
+
+
+def changenote(version):
+    """A one-line changenote: KeyValues cannot hold a newline, so the bullets become sentences."""
+    parts = [b if b[-1] in ".!?" else b + "." for b in changelog_bullets() if b]
+    return f"v{version}" + (": " + " ".join(parts) if parts else "")
 
 
 def vdf_value(s):
@@ -109,7 +123,7 @@ def build_vdf(folder, version):
         "previewfile": str(ROOT / "mod/preview.png"),
         "visibility": "0",  # Valve's ERemoteStoragePublishedFileVisibility: 0 = public
         "title": "Qud HUD",
-        "changenote": changelog_head() or f"v{version}",
+        "changenote": changenote(version),
     }
     body = "\n".join(f'\t"{k}"\t\t"{vdf_value(v)}"' for k, v in fields.items())
     vdf_path = DIST / "workshop_item.vdf"
