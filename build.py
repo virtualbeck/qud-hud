@@ -81,7 +81,14 @@ def changelog_head():
 
 
 def vdf_escape(s):
-    return s.replace("\\", "\\\\").replace('"', '\\"')
+    # A KeyValues quoted value cannot span lines: a raw newline ends the value and the parser
+    # reads the next line as a key. The description and changenote are both multi-line.
+    return (
+        s.replace("\\", "\\\\")
+        .replace('"', '\\"')
+        .replace("\n", "\\n")
+        .replace("\t", "\\t")
+    )
 
 
 def build_vdf(folder, version):
