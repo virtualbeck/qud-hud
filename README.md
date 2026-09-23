@@ -1,92 +1,79 @@
 # Qud HUD
 
-Second monitor heads-up display for Caves of Qud. Player instructions are in [mod/README.md](mod/README.md).
+A second monitor heads-up display for [Caves of Qud](https://www.cavesofqud.com/).
+
+Your character's state is written out every turn and drawn as a page you keep open on another
+screen — hit points, what's wrong with you, what's hunting you, what's on cooldown, and what needs
+attention right now, without pausing to dig through sub-screens.
+
+![Qud HUD](mod/preview.png)
+
+## Install
+
+**From Steam:** subscribe to the [Workshop item](https://steamcommunity.com/sharedfiles/filedetails/?id=3805872225).
+
+**Without Steam:** download `QudHUD-vX.Y.Z.zip` from [Releases](https://github.com/virtualbeck/qud-hud/releases)
+and extract the `QudHUD` folder into your Caves of Qud `Mods` folder:
+
+| | |
+|---|---|
+| Windows | `%USERPROFILE%\AppData\LocalLow\Freehold Games\CavesOfQud\Mods` |
+| macOS | `~/Library/Application Support/com.FreeholdGames.CavesOfQud/Mods` |
+| Linux | `~/.config/unity3d/Freehold Games/CavesOfQud/Mods` |
+
+Either way: enable it in the Mods menu, start or load a game, and the message log will tell you
+where the display page was written — normally `Documents/QudHUD/hud.html`. Open that in a browser
+on your second monitor.
+
+Nothing is sent anywhere. The page reads a local file the mod writes; no server, no network.
+
+## Use
+
+Full instructions are in [mod/README.md](mod/README.md), which ships with the mod. In short:
+
+- Drag a panel by its `≡` grip to rearrange it, or focus the grip and use the arrow keys.
+- `×` hides a panel; **Options** in the footer brings it back.
+- `+` / `-` resize, `0` resets, `R` restores the default layout.
+- The dot in the footer is green while the data is current, amber once nothing has been written for
+  a couple of minutes, and red if the file can't be read. The readings fade when they go stale, so a
+  closed game doesn't look like a live one.
+
+## Bugs and suggestions
+
+Please open an [issue](https://github.com/virtualbeck/qud-hud/issues). Useful things to include:
+the mod version (shown in **Options** on the page), your game version, and any lines starting with
+`[QudHUD]` in `Player.log`.
+
+If a panel stops drawing after a game update, the footer will name it and the browser console will
+have the error — that text is the most useful thing you can paste into an issue.
+
+## Building from source
+
+Requires Python 3.8+. No other dependencies.
+
+```
+python build.py              # dist/QudHUD and dist/QudHUD-vX.Y.Z.zip
+python build.py --install    # also copy it into your Mods folder
+python build.py --uninstall  # remove that copy again
+```
+
+`src/hud.html` is the display page and can be opened directly in a browser to work on the design —
+it shows a waiting screen until a `hud_data.js` sits next to it.
+
+One gotcha worth knowing: a locally installed copy and a Workshop-subscribed copy share the same mod
+ID, and having both present can make the game load a mix of the two. Unsubscribe or `--uninstall`
+while working on it.
 
 ## Layout
-- `src/QudHUD.template.cs` mod code. `__HTML__` and `__VERSION__` are filled in by the build.
-- `src/hud.html` display page. Open it directly in a browser to work on the design.
-- `mod/` files shipped as-is (manifest, preview, player README, and `workshop.json` once you have one).
-- `VERSION` the single source of the version number.
 
-## Build
-Requires Python 3.8+.
+| | |
+|---|---|
+| `src/QudHUD.template.cs` | the mod. `__HTML__` and `__VERSION__` are filled in by the build |
+| `src/hud.html` | the display page |
+| `mod/` | files shipped as-is: manifest, preview, player README, Workshop link |
+| `VERSION` | the single source of the version number |
+| `build.py` | builds, installs, and can publish to the Workshop via SteamCMD (`--workshop`) |
 
-    python build.py              # dist/QudHUD and dist/QudHUD-vX.Y.Z.zip
-    python build.py --install    # also copies into your Caves of Qud Mods folder
+## License
 
-## Testing before publishing
-`--install` copies straight into your local Mods folder and never touches Steam, so use it to iterate
-before publishing:
-
-1. If you're subscribed to the [Workshop item](https://steamcommunity.com/sharedfiles/filedetails/?id=3805872225),
-   unsubscribe while testing. Your local dev copy and the Workshop-subscribed copy share the same mod
-   ID, and having both installed at once can make the game load a conflicting mix of the two.
-2. `python build.py --install`, launch the game, and check the Options screen shows the version you
-   just built (not a stale cached one).
-3. Edit, rerun `python build.py --install`, reload and retest — repeat as needed. No git or Steam
-   involvement required for this loop.
-4. Once satisfied, `python build.py --uninstall` removes the local dev copy, so it's out of the way of
-   the Workshop-subscribed copy. Follow the release checklist below, then resubscribe (or check the
-   Workshop content folder) to confirm the published version matches what you tested.
-
-## Release checklist
-1. Bump `VERSION` and add a section to `CHANGELOG.md`.
-2. `python build.py --install`, launch the game, and check the display page and Options version.
-3. Upload to Steam from the game's Workshop uploader (see below).
-4. Commit, tag `vX.Y.Z`, push, and attach `dist/QudHUD-vX.Y.Z.zip` to a GitHub release.
-
-## Steam Workshop
-Requires the Steam copy of the game.
-1. Main menu, Modding Utilities (lower left), Steam workshop uploader.
-2. Select Qud HUD and click **Create Workshop Id for Mod...** (first time only). This writes `workshop.json` into the installed mod folder.
-3. Copy that `workshop.json` into `mod/` here and commit it, so future builds keep the Workshop link.
-4. Fill in title, tags and description (paste `workshop_description.txt`), then **Upload Content...**.
-5. Updates: build, install, open the uploader, select the mod, **Upload Content...**.
-
-Keep `"Visibility": "2"` in `workshop.json`, or updates may reset the mod to private.
-If you subscribe to your own Workshop item, move your dev copy out of `Mods` to avoid loading it twice.
-
-## Automated Workshop upload (optional)
-`python build.py --workshop` builds the mod and publishes `dist/QudHUD` via SteamCMD instead of the
-in-game uploader, using `mod/preview.png` as the preview image.
-
-It does not touch the description. SteamCMD's build file is KeyValues, which has no way to express
-a line break inside a value (and honours no escape sequences), so a multi-line description cannot
-survive the trip. `workshop_description.txt` stays the source of truth for the text — paste it into
-the in-game uploader or the item's Steam page when it changes. Leaving the key out means each
-upload keeps whatever description the page already has. This uses SteamCMD's generic `workshop_build_item` command, which isn't documented by
-Freehold Games specifically — treat it as unofficial and confirm it works before relying on it.
-
-Requires:
-- [SteamCMD](https://developer.valvesoftware.com/wiki/SteamCMD) installed and on `PATH`.
-- `STEAM_USER` set to your Steam account name. SteamCMD prompts for the password and, on first login
-  from a machine, a Steam Guard code (interactive; it caches the session afterward).
-
-`--workshop` refuses to run until `mod/workshop.json` exists, and only ever updates the `WorkshopId`
-it names — it never creates a new item. Do the very first publish through the in-game uploader (see
-"Steam Workshop" above), which writes `mod/workshop.json` for you; copy it into `mod/` here and commit
-it. (If you don't want to touch the game for that step, you can instead write the file by hand with a
-placeholder ID, e.g.:
-
-    {
-      "WorkshopId": 123456789,
-      "Title": "Qud HUD",
-      "Description": "...paste workshop_description.txt...",
-      "Tags": "UI",
-      "Visibility": "2",
-      "ImagePath": "preview.png"
-    }
-
-then run `python build.py --workshop` once by hand with that placeholder — SteamCMD will create a new
-item and print its real ID; immediately fix `WorkshopId` to that number and commit before running
-`--workshop` again, or a second run will create yet another duplicate.)
-
-Every later `--workshop` run reads `WorkshopId` from `mod/workshop.json` and updates that one item.
-
-**Known gotcha:** an item created via SteamCMD can come up **Private** on the Steam page even though
-`visibility` in the generated VDF and `"Visibility": "2"` in `mod/workshop.json` both say public. Check
-the item's page and, if needed, set it public by hand once: **Change Visibility** on
-https://steamcommunity.com/sharedfiles/filedetails/?id=3805872225. Later `--workshop` updates haven't
-been confirmed not to reset this — recheck after each update until that's verified.
-
-Qud HUD's current Workshop item: https://steamcommunity.com/sharedfiles/filedetails/?id=3805872225
+MIT — see [LICENSE](LICENSE).

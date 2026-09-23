@@ -13,8 +13,8 @@ the C# code and the display page.
 
 --workshop needs `steamcmd` on PATH and the STEAM_USER env var set to a Steam
 account. SteamCMD will prompt for the password and, on first login from this
-machine, a Steam Guard code. See the "Automated Workshop upload" section in
-README.md.
+machine, a Steam Guard code. It updates the item named by mod/workshop.json and
+never creates a new one; it leaves the Workshop description alone.
 """
 import json, os, re, shutil, subprocess, sys, zipfile
 from pathlib import Path
@@ -140,8 +140,8 @@ def publish_workshop(folder, version):
     if not WORKSHOP_JSON.exists():
         sys.exit(
             f"{WORKSHOP_JSON} doesn't exist yet. Publishing without it creates a NEW Workshop item "
-            "every time instead of updating one. Create it first (see README.md's 'Steam Workshop' "
-            "or 'Automated Workshop upload' sections), commit it, then re-run --workshop."
+            "every time instead of updating one. Create the item once with the game's in-game "
+            "Workshop uploader, copy the workshop.json it writes to mod/, then re-run --workshop."
         )
 
     vdf_path = build_vdf(folder, version)

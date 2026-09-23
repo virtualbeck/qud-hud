@@ -12,11 +12,20 @@ Enable it in the Mods menu, then start or load a game. The message log shows whe
 
 ## Use
 The page updates right before each of your turns, after everything else has acted.
-- Drag a panel by its ≡ grip to rearrange, or focus the grip and use the arrow keys. `R` restores the default layout.
-- `+` and `-` resize, `0` resets size.
-- **Options** in the footer: low fresh water warning and threshold, and the installed version.
+- Drag a panel by its ≡ grip to rearrange, or focus the grip and use the arrow keys.
+- `×` hides a panel you don't want. **Options** lists them all and brings them back.
+- `+` and `-` resize, `0` resets size. `R` restores the default layout and unhides everything.
+- **Options** in the footer: low fresh water warning and threshold, which panels are shown, and the installed version.
+
+The dot at the bottom left tells you whether what you're looking at is current:
+- **Green** — live.
+- **Amber** — nothing has been written for a couple of minutes. The game is closed, or you have been idle. The readings fade at the same time, so stale numbers don't read as live ones.
+- **Red** — the data file can't be read at all.
 
 ## Notes
 - The page reads a local file; no server or internet connection is needed.
 - The mod adds a small tracker part to your character. Keep the mod enabled for saves made with it.
-- If a section stays empty after a game update, check `Player.log` for lines starting with `[QudHUD]`.
+- If a section stays empty after a game update, check `Player.log` for lines starting with `[QudHUD]`. If a panel stops drawing entirely, the footer names it and the browser console has the error.
+
+## Bugs and suggestions
+Please open an issue at https://github.com/virtualbeck/qud-hud/issues — include the version shown in **Options**, your game version, and any `[QudHUD]` lines from `Player.log`.

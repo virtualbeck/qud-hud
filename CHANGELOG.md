@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.6
+- Added: panels can be hidden, not just moved. The new × on a panel hides it, and Options lists every panel so you can bring it back. R still restores the default layout and unhides everything.
+- Added: the readings fade out when the link goes stale, so a closed game no longer looks like a live one at a glance.
+- Added: if a panel stops drawing, the footer now names it instead of failing silently. Each distinct fault is reported once rather than on every update.
+- Fixed: the idle line under Nothing pressing no longer changes every few minutes; it is held until something actually happens, as intended.
+
 ## 1.0.5
 - Fixed: the "Linked" light stayed green after the game exited, because `hud_data.js` stays on disk and still loads cleanly. The light now reads the age of the data itself: green when it is current, amber ("No updates for 12m") once nothing has been written for two minutes, red when the file cannot be read at all.
 - Changed: the display page now rebuilds itself every 5 minutes instead of 10, and carries the last reading across the rebuild, so it no longer flashes the waiting screen. Memory held between rebuilds is about 2MB.

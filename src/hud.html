@@ -97,6 +97,11 @@ body{
 #link.on::before{color:var(--good)}
 #link.stale::before{color:var(--warn)}
 #link.off::before{color:var(--crit)}
+#broke{color:var(--crit)}
+#broke[hidden]{display:none}
+/* readings that are no longer current get faded, so a dead link is obvious from across the room */
+#app{transition:opacity .4s,filter .4s}
+body.stale #app{opacity:.32;filter:grayscale(.6)}
 
 #wait{display:none;max-width:40rem;margin:18vh auto 0;text-align:center}
 #wait .panel{text-align:left}
@@ -121,14 +126,18 @@ body.waiting #wait{display:block}
 #opts input{font:inherit;width:4.5rem;background:var(--void);color:var(--white);border:1px solid var(--frame);padding:0 .3rem}
 #opts .sub{padding-left:3.6ch;color:var(--dim)}
 #opts .sub.off{opacity:.45}
-#opts .ver{margin-top:.8rem;padding-top:.5rem;border-top:1px dashed var(--frame);color:var(--dim);font-size:.85rem}
+#opts .phead,#opts .ver{margin-top:.8rem;padding-top:.5rem;border-top:1px dashed var(--frame);color:var(--dim);font-size:.85rem}
+#opts .phead{margin-bottom:.4rem}
 
 /* moving panels */
-.grip{position:absolute;top:-.78em;right:.6rem;border:0;font:inherit;font-size:1rem;line-height:1.35;
-  color:var(--frame-hi);padding:0 .35rem;cursor:grab;touch-action:none;
+.grip,.hide{position:absolute;top:-.78em;border:0;font:inherit;font-size:1rem;line-height:1.35;
+  color:var(--frame-hi);padding:0 .35rem;touch-action:none;
   background:linear-gradient(var(--void) 50%,var(--panel) 50%)}
-.grip:hover,.grip:focus-visible{color:var(--gold)}
-.grip:focus-visible{outline:1px solid var(--gold);outline-offset:1px}
+.grip{right:2.4rem;cursor:grab}
+.hide{right:.6rem;cursor:pointer}
+.grip:hover,.grip:focus-visible,.hide:hover,.hide:focus-visible{color:var(--gold)}
+.grip:focus-visible,.hide:focus-visible{outline:1px solid var(--gold);outline-offset:1px}
+.panel.off{display:none}
 .zone{min-width:0}
 body.dragging,body.dragging *{cursor:grabbing!important;user-select:none}
 body.dragging .zone{min-height:4rem;outline:1px dashed var(--frame);outline-offset:.3rem}
@@ -190,9 +199,11 @@ body.dragging #marker{display:block}
   <div class="opt sub" id="waterSub"><label for="waterMin">At or below</label>
     <input id="waterMin" type="number" min="1" max="999" step="1"> <span>drams</span></div>
   <div class="opt sub">Only applies to characters who get thirsty.</div>
+  <div class="phead">Panels</div>
+  <div id="panelOpts"></div>
   <div class="ver">Qud HUD v<span id="ver"></span></div>
 </section>
-<div id="foot"><span id="link">Not linked</span><span class="right"><span>Drag ≡ to move a panel, R resets layout. + / - to resize, 0 resets size.</span><button type="button" id="optBtn" aria-expanded="false" aria-controls="opts">☼ Options</button></span></div>
+<div id="foot"><span id="link">Not linked</span><span id="broke" hidden></span><span class="right"><span>Drag ≡ to move a panel, × hides it, R resets. + / - to resize, 0 resets size.</span><button type="button" id="optBtn" aria-expanded="false" aria-controls="opts">☼ Options</button></span></div>
 
 <script>
 (function(){
@@ -437,12 +448,35 @@ function renderSurvival(d){
 }
 
 var lastPayload=null;
+var PARTS=[['Header',renderHead],['Pressing matters',renderWarn],['Effects',renderEffects],
+  ['Abilities',renderAbilities],['Hostiles',renderFoes],['Gear',renderGear],
+  ['Attributes',renderAttrs],['Combat',renderCombat],['Survival',renderSurvival]];
+// A panel a game update has broken would otherwise fail silently on every payload. Logging it
+// each time floods the console and holds every Error alive, so each distinct fault is reported
+// once and the footer names whatever is currently not drawing.
+var seenFault={},broken={};
+function noteFault(name,e){
+  broken[name]=1;
+  var key=name+'|'+((e&&e.message)||e);
+  if(seenFault[key])return;
+  seenFault[key]=1;
+  if(window.console)console.error('Qud HUD: the '+name+' panel failed to draw',e);
+}
+function showFaults(){
+  var names=[],k;
+  for(k in broken)names.push(k);
+  var el=$('broke');
+  el.hidden=!names.length;
+  el.textContent=names.length?(names.length===1?'1 panel is not drawing: ':names.length+' panels are not drawing: ')+names.join(', '):'';
+}
 function render(p){
   lastPayload=p;
   var d=p.data||{};
   document.body.classList.remove('waiting');
-  var parts=[renderHead,renderWarn,renderEffects,renderAbilities,renderFoes,renderGear,renderAttrs,renderCombat,renderSurvival];
-  parts.forEach(function(fn){try{fn(d);}catch(e){if(window.console)console.error(e);}});
+  PARTS.forEach(function(part){
+    try{part[1](d);delete broken[part[0]];}catch(e){noteFault(part[0],e);}
+  });
+  showFaults();
   var name=plain((d.player||{}).name||'');
   document.title=(allAlerts(d).some(function(a){return a.sev===3;})?'!! ':'')+(name||'Qud HUD');
 }
@@ -450,7 +484,11 @@ function render(p){
 // Polling: re-inject the data script with a cache buster. Works from file:// without a server.
 var lastSeq=null,loading=false;
 var STALE_MS=2*60*1000;
-function setLink(state,text){var l=$('link');l.className=state;l.textContent=text;}
+function setLink(state,text){
+  var l=$('link');l.className=state;l.textContent=text;
+  // anything other than a live link means what is on screen is no longer current
+  document.body.classList.toggle('stale',state!=='on');
+}
 // hud_data.js stays on disk after the game exits, so a script that loads cleanly only proves
 // the file is readable, not that anything is still writing it. Age comes from the payload's own
 // clock (same machine as this page) rather than a page-local timer, so the periodic rebuild
@@ -511,6 +549,9 @@ document.addEventListener('keydown',function(e){
 var LAYOUT_KEY='qudhud.layout';
 var zones=[].slice.call(document.querySelectorAll('.zone'));
 function panelsIn(z){return [].slice.call(z.children).filter(function(c){return c.classList.contains('panel');});}
+// Hidden panels keep their place in the saved layout, so they return where they were, but they
+// are invisible to anything that measures the page: column collapsing, drops and arrow moves.
+function shownIn(z){return panelsIn(z).filter(function(p){return !p.classList.contains('off');});}
 function snapshot(){var o={};zones.forEach(function(z){o[z.dataset.zone]=panelsIn(z).map(function(p){return p.dataset.panel;});});return o;}
 function apply(layout){
   if(!layout)return;
@@ -531,7 +572,7 @@ function colCap(){var w=window.innerWidth;return w<=760?1:w<=1200?2:3;}
 function refreshCols(){
   var dragging=document.body.classList.contains('dragging'),used=0;
   colZones.forEach(function(z){
-    var show=dragging||panelsIn(z).length>0;
+    var show=dragging||shownIn(z).length>0;
     z.classList.toggle('vacant',!show);
     if(show)used++;
   });
@@ -558,7 +599,7 @@ var drag=null,marker=$('marker');
 // Nothing reflows during a drag: the panel stays as a ghost and a gold line marks the drop spot.
 function target(x,y){
   var z=zoneAt(x,y);if(!z)return null;
-  var list=panelsIn(z),before=null;
+  var list=shownIn(z),before=null;
   for(var i=0;i<list.length;i++){
     var r=list[i].getBoundingClientRect();
     if(y<r.top+r.height/2){before=list[i];break;}
@@ -615,7 +656,7 @@ function onDown(e,p){
   window.addEventListener('pointercancel',onCancel);
 }
 function onKey(e,p,g){
-  var z=p.parentNode,zi=zones.indexOf(z),list=panelsIn(z),i=list.indexOf(p);
+  var z=p.parentNode,zi=zones.indexOf(z),list=shownIn(z),i=list.indexOf(p);
   if(e.key==='ArrowUp'&&i>0)z.insertBefore(p,list[i-1]);
   else if(e.key==='ArrowDown'&&i<list.length-1)z.insertBefore(list[i+1],p);
   else if(e.key==='ArrowLeft'&&zi>0)zones[zi-1].appendChild(p);
@@ -623,33 +664,69 @@ function onKey(e,p,g){
   else return;
   e.preventDefault();e.stopPropagation();save();refreshCols();settle(p);g.focus();
 }
-[].slice.call(document.querySelectorAll('.panel[data-panel]')).forEach(function(p){
+var HIDDEN_KEY='qudhud.hidden',hiddenPanels={},panelOptsEl=$('panelOpts');
+try{(JSON.parse(localStorage.getItem(HIDDEN_KEY))||[]).forEach(function(id){hiddenPanels[id]=1;});}catch(e){}
+var allPanels=[].slice.call(document.querySelectorAll('.panel[data-panel]'));
+function syncPanels(){
+  allPanels.forEach(function(p){p.classList.toggle('off',!!hiddenPanels[p.dataset.panel]);});
+  [].slice.call(panelOptsEl.querySelectorAll('.tog')).forEach(function(t){
+    var on=!hiddenPanels[t.getAttribute('data-panel-tog')];
+    t.setAttribute('aria-checked',on);t.textContent=on?'[X]':'[ ]';
+  });
+  refreshCols();
+}
+function setPanelHidden(id,hide){
+  if(hide)hiddenPanels[id]=1;else delete hiddenPanels[id];
+  var ids=[],k;
+  for(k in hiddenPanels)ids.push(k);
+  try{localStorage.setItem(HIDDEN_KEY,JSON.stringify(ids));}catch(e){}
+  syncPanels();
+}
+allPanels.forEach(function(p){
+  var id=p.dataset.panel,title=p.querySelector('h2').textContent;
   var g=document.createElement('button');
   g.className='grip';g.type='button';g.textContent='\u2261';
-  var title=p.querySelector('h2').textContent;
   g.title='Drag to move '+title+'. Arrow keys also move it.';
   g.setAttribute('aria-label','Move '+title+' panel');
   g.addEventListener('pointerdown',function(e){onDown(e,p);});
   g.addEventListener('keydown',function(e){onKey(e,p,g);});
   p.appendChild(g);
+
+  var x=document.createElement('button');
+  x.className='hide';x.type='button';x.textContent='\u00d7';
+  x.title='Hide '+title+'. Options brings it back.';
+  x.setAttribute('aria-label','Hide '+title+' panel');
+  x.addEventListener('click',function(){setPanelHidden(id,true);});
+  p.appendChild(x);
+
+  var row=document.createElement('div'),t=document.createElement('button'),lbl=document.createElement('label');
+  row.className='opt';
+  t.type='button';t.className='tog';t.setAttribute('role','switch');t.setAttribute('data-panel-tog',id);
+  t.addEventListener('click',function(){setPanelHidden(id,!hiddenPanels[id]);});
+  lbl.textContent=title;
+  lbl.addEventListener('click',function(){t.click();});
+  row.appendChild(t);row.appendChild(lbl);panelOptsEl.appendChild(row);
 });
+syncPanels();
 document.addEventListener('keydown',function(e){
   if(typing(e)||(e.key!=='r'&&e.key!=='R'))return;
   if(e.ctrlKey||e.metaKey||e.altKey)return;
-  apply(defaultLayout);save();refreshCols();
+  hiddenPanels={};
+  try{localStorage.removeItem(HIDDEN_KEY);}catch(e2){}
+  apply(defaultLayout);save();syncPanels();
 });
 
 // Options popover.
 var optsEl=$('opts'),optBtn=$('optBtn'),waterMin=$('waterMin');
 function saveOpts(){try{localStorage.setItem(OPTS_KEY,JSON.stringify(opts));}catch(e){}if(lastPayload)render(lastPayload);}
 function syncOpts(){
-  [].slice.call(optsEl.querySelectorAll('.tog')).forEach(function(t){
+  [].slice.call(optsEl.querySelectorAll('.tog[data-opt]')).forEach(function(t){
     var on=!!opts[t.dataset.opt];t.setAttribute('aria-checked',on);t.textContent=on?'[X]':'[ ]';
   });
   waterMin.value=opts.waterMin;waterMin.disabled=!opts.waterWarn;
   $('waterSub').classList.toggle('off',!opts.waterWarn);
 }
-[].slice.call(optsEl.querySelectorAll('.tog')).forEach(function(t){
+[].slice.call(optsEl.querySelectorAll('.tog[data-opt]')).forEach(function(t){
   t.addEventListener('click',function(){opts[t.dataset.opt]=!opts[t.dataset.opt];syncOpts();saveOpts();});
   var lbl=t.parentNode.querySelector('label');
   if(lbl)lbl.addEventListener('click',function(){t.click();});
@@ -660,7 +737,7 @@ waterMin.addEventListener('change',function(){
 });
 function toggleOpts(show){
   optsEl.hidden=!show;optBtn.setAttribute('aria-expanded',show);
-  if(show)optsEl.querySelector('.tog').focus();
+  if(show)optsEl.querySelector('.tog[data-opt]').focus();
 }
 optBtn.addEventListener('click',function(){toggleOpts(optsEl.hidden);});
 document.addEventListener('keydown',function(e){if(e.key==='Escape'&&!optsEl.hidden){toggleOpts(false);optBtn.focus();}});
@@ -681,13 +758,14 @@ try{
   var carry=JSON.parse(sessionStorage.getItem(CARRY_KEY));
   sessionStorage.removeItem(CARRY_KEY);
   if(carry&&carry.p&&Date.now()-carry.at<15000){
+    if(carry.q)quip=quietLast=carry.q;  // set before render, or the idle line re-rolls each rebuild
     render(carry.p);
     if(carry.y)window.scrollTo(0,carry.y);
   }
 }catch(e){}
 setInterval(function(){
   if(Date.now()-flushedAt<FLUSH_MS||drag||!optsEl.hidden)return;
-  try{sessionStorage.setItem(CARRY_KEY,JSON.stringify({at:Date.now(),y:window.scrollY,p:lastPayload}));}catch(e){}
+  try{sessionStorage.setItem(CARRY_KEY,JSON.stringify({at:Date.now(),y:window.scrollY,q:quip,p:lastPayload}));}catch(e){}
   location.reload();
 },30000);
 
