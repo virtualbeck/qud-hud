@@ -7,6 +7,8 @@
   python build.py --uninstall        remove the mod from your Caves of Qud Mods folder
   python build.py --uninstall PATH   remove it from PATH instead
   python build.py --workshop         build, then publish dist/QudHUD to the Steam Workshop via SteamCMD
+  python build.py --release          build, tag vX.Y.Z, and publish a GitHub release with the zip
+  python build.py --release --yes    the same without the confirmation prompt
 
 The version comes from the VERSION file and is stamped into the manifest,
 the C# code and the display page.
@@ -15,6 +17,11 @@ the C# code and the display page.
 account. SteamCMD will prompt for the password and, on first login from this
 machine, a Steam Guard code. It updates the item named by mod/workshop.json and
 never creates a new one; it leaves the Workshop description alone.
+
+--release needs `gh` on PATH and logged in. It refuses to run on a dirty tree,
+on a version with no CHANGELOG section, or when the tag already exists. Release
+notes cover every CHANGELOG section since the previous tag, so versions that
+were never released still reach people who download the zip.
 """
 import json, os, re, shutil, subprocess, sys, zipfile
 from pathlib import Path
@@ -131,6 +138,114 @@ def build_vdf(folder, version):
     return vdf_path
 
 
+def changelog_sections():
+    """Every (version, body) section of CHANGELOG.md, newest first."""
+    out, version, body = [], None, []
+    for line in (ROOT / "CHANGELOG.md").read_text(encoding="utf-8").splitlines():
+        if line.startswith("## "):
+            if version:
+                out.append((version, "\n".join(body).strip()))
+            version, body = line[3:].strip(), []
+        elif version:
+            body.append(line)
+    if version:
+        out.append((version, "\n".join(body).strip()))
+    return out
+
+
+def git(*args):
+    r = subprocess.run(["git", *args], capture_output=True, text=True, cwd=ROOT)
+    if r.returncode != 0:
+        sys.exit(f"git {' '.join(args)} failed: {(r.stderr or r.stdout).strip()}")
+    return r.stdout.strip()
+
+
+def version_tuple(tag):
+    m = re.fullmatch(r"v(\d+)\.(\d+)\.(\d+)", tag)
+    return tuple(int(p) for p in m.groups()) if m else None
+
+
+def previous_tag(tag):
+    """The highest existing release tag below this one, or None for a first release."""
+    here = version_tuple(tag)
+    below = [t for t in git("tag").split() if version_tuple(t) and version_tuple(t) < here]
+    return max(below, key=version_tuple) if below else None
+
+
+def release_notes(version, prev):
+    """Notes covering every changelog section after prev, so skipped versions still get read."""
+    stop = version_tuple(prev) if prev else None
+    changes = [
+        f"### {v}\n{body}"
+        for v, body in changelog_sections()
+        if version_tuple("v" + v) and (stop is None or version_tuple("v" + v) > stop)
+    ]
+    repo = "https://github.com/virtualbeck/qud-hud"
+    return f"""Second monitor heads-up display for Caves of Qud.
+
+## Install
+
+Download `{MOD_ID}-v{version}.zip` below and extract the `{MOD_ID}` folder into your Caves of Qud `Mods` folder:
+
+| | |
+|---|---|
+| Windows | `%USERPROFILE%\\AppData\\LocalLow\\Freehold Games\\CavesOfQud\\Mods` |
+| macOS | `~/Library/Application Support/com.FreeholdGames.CavesOfQud/Mods` |
+| Linux | `~/.config/unity3d/Freehold Games/CavesOfQud/Mods` |
+
+Or subscribe on the [Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3805872225).
+
+Enable it in the Mods menu, start or load a game, and open the page the message log points at
+(normally `Documents/QudHUD/hud.html`) on your second monitor.
+
+## Changes{" since " + prev if prev else ""}
+
+{chr(10).join(changes) if changes else "See CHANGELOG.md."}
+
+Found a bug? Please [open an issue]({repo}/issues).
+"""
+
+
+def release(version, assume_yes):
+    if shutil.which("gh") is None:
+        sys.exit("gh not found on PATH. Install the GitHub CLI and run `gh auth login`, then re-run with --release.")
+
+    tag = f"v{version}"
+    if git("status", "--porcelain"):
+        sys.exit("Working tree has uncommitted changes. Commit or stash them, then re-run with --release.")
+    if tag in git("tag").split():
+        sys.exit(f"Tag {tag} already exists. Bump VERSION and add a CHANGELOG section first.")
+    top = changelog_sections()
+    if not top or top[0][0] != version:
+        sys.exit(f"CHANGELOG.md's newest section is {top[0][0] if top else 'missing'}, not {version}. Add it first.")
+
+    zpath = DIST / f"{MOD_ID}-v{version}.zip"
+    if not zpath.exists():
+        sys.exit(f"{zpath} is missing. Run the build first.")
+
+    prev = previous_tag(tag)
+    notes = DIST / "release_notes.md"
+    notes.write_text(release_notes(version, prev), encoding="utf-8")
+
+    print(f"Releasing {tag}")
+    print(f"  commit: {git('rev-parse', '--short', 'HEAD')} on {git('rev-parse', '--abbrev-ref', 'HEAD')}")
+    print(f"  asset:  {zpath.name}")
+    print(f"  notes:  changes since {prev}" if prev else "  notes:  all changes so far")
+    if not assume_yes:
+        if input("Tag, push and publish? [y/N] ").strip().lower() not in ("y", "yes"):
+            sys.exit("Cancelled, nothing was pushed.")
+
+    git("tag", "-a", tag, "-m", tag)
+    git("push", "origin", tag)
+    # The title is the bare tag, matching every earlier release on this repo.
+    r = subprocess.run(["gh", "release", "create", tag, str(zpath),
+                        "--title", tag, "--notes-file", str(notes)], cwd=ROOT)
+    if r.returncode != 0:
+        sys.exit(f"gh release create failed (status {r.returncode}). The tag {tag} is already pushed; "
+                 f"fix the problem and finish with: gh release create {tag} {zpath} --title {tag} --notes-file {notes}")
+    print(f"  released {tag}")
+
+
 def publish_workshop(folder, version):
     user = os.environ.get("STEAM_USER")
     if not user:
@@ -189,3 +304,5 @@ if __name__ == "__main__":
         install(folder, target)
     if "--workshop" in sys.argv:
         publish_workshop(folder, (ROOT / "VERSION").read_text().strip())
+    if "--release" in sys.argv:
+        release((ROOT / "VERSION").read_text().strip(), "--yes" in sys.argv)
