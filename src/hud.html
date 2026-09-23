@@ -7,7 +7,7 @@
 <style>
 :root{
   --void:#041615; --panel:#072120; --frame:#155352; --frame-hi:#40a4b9;
-  --text:#b1c9c3; --dim:#5d837d; --gold:#cfc041; --white:#ffffff;
+  --text:#b1c9c3; --dim:#5d837d; --gold:#cfc041; --white:#dde8e4;
   --crit:#d74200; --warn:#e99f10; --good:#00c420; --info:#77bfcf;
   --scale:1;
   font-size:calc(16px * var(--scale));
@@ -72,9 +72,9 @@ body{
 .row .r{white-space:nowrap}
 .item+.item{margin-top:.45rem}
 .item .det{color:var(--dim);font-size:.88rem;white-space:pre-line;margin-top:.05rem}
-.fx.bad .nm::before{content:'\25BC ';color:var(--crit)}
-.fx.good .nm::before{content:'\25B2 ';color:var(--good)}
-.fx.dis .nm::before{content:'\2623 ';color:var(--crit)}
+.fx.bad .nm::before{content:'\25BC\00A0';color:var(--crit)}
+.fx.good .nm::before{content:'\25B2\00A0';color:var(--good)}
+.fx.dis .nm::before{content:'\2623\00A0';color:var(--crit)}
 
 .attrs{display:grid;grid-template-columns:repeat(3,1fr);gap:.5rem}
 .attr{border:1px solid var(--frame);text-align:center;padding:.3rem 0 .25rem}
@@ -107,7 +107,7 @@ body{
 
 #foot{position:fixed;left:0;right:0;bottom:0;display:flex;justify-content:space-between;gap:1rem;
   padding:.35rem 1rem;font-size:.8rem;color:var(--dim);background:var(--void);border-top:1px solid var(--frame)}
-#link::before{content:'\25CF ';color:var(--dim)}
+#link::before{content:'\25CF\00A0';color:var(--dim)}
 #link.on::before{color:var(--good)}
 #link.stale::before{color:var(--warn)}
 #link.off::before{color:var(--crit)}
