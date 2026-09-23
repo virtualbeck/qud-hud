@@ -107,7 +107,6 @@ namespace QudHUD
                 UnityEngine.Debug.Log("[QudHUD] Display page: " + path);
             }
             Update(player, true);
-            Diagnostics.Write(player, true);
         }
 
         public static void Update(GameObject player, bool force)
@@ -116,8 +115,6 @@ namespace QudHUD
             DateTime now = DateTime.UtcNow;
             // During resting and auto-explore, cap writes to a few per second.
             if (!force && R.Bool(R.SCall("XRL.World.Capabilities.AutoAct", "IsActive")) && (now - lastWrite).TotalMilliseconds < 300) return;
-
-            Diagnostics.Write(player, false);
 
             string json;
             try { json = Json.Write(Snapshot.Build(player)); }
@@ -225,7 +222,6 @@ namespace QudHUD
             var d = new Dictionary<string, object>();
             var alerts = new List<Dictionary<string, object>>();
 
-            Section("perception", () => Perception.Scan(p));
             Section("player", () => BuildPlayer(p, d, alerts));
             Section("place", () => BuildPlace(p, d));
             Section("attributes", () => BuildAttributes(p, d));
@@ -296,18 +292,15 @@ namespace QudHUD
             pl["xpPrev"] = prev == null ? null : (object)R.Int(prev, 0);
 
             int hp = SV(p, "Hitpoints"), max = SB(p, "Hitpoints");
-            // Nerve poppy and the like take the numbers off the player's own sheet, so the HUD
-            // shows the same word the game would rather than the figures behind it.
-            bool exact = Perception.SelfExact;
-            pl["exact"] = exact;
-            if (exact) { pl["hp"] = hp; pl["hpMax"] = max; }
-            else pl["health"] = Health.Describe(hp, max);
+            pl["exact"] = true;
+            pl["hp"] = hp;
+            pl["hpMax"] = max;
             d["player"] = pl;
 
             if (max > 0)
             {
                 double pct = (double)hp / max;
-                string text = exact ? hp + " / " + max : R.Strip(Health.Describe(hp, max));
+                string text = hp + " / " + max;
                 if (pct <= 0.25) Alert(alerts, 3, "Hit points critical: " + text);
                 else if (pct <= 0.5) Alert(alerts, 2, "Hit points low: " + text);
             }
@@ -661,7 +654,7 @@ namespace QudHUD
                 if (!R.Bool(hostile)) continue;
                 if (!CurrentlyVisible(o)) continue;
                 int hp = SV(o, "Hitpoints"), hpMax = SB(o, "Hitpoints");
-                bool exact = Perception.Sees(o);
+                bool exact = Perception.Sees(p, o);
                 var entry = new Dictionary<string, object> {
                     { "name", Name(o) },
                     { "level", SV(o, "Level") },
@@ -673,7 +666,7 @@ namespace QudHUD
                 // Without a scanner the exact numbers are not sent at all, so the page cannot
                 // leak them back through a proportional bar.
                 if (exact) { entry["hp"] = hp; entry["hpMax"] = hpMax; }
-                else entry["health"] = Health.Describe(hp, hpMax);
+                else entry["health"] = Health.Describe(o, hp, hpMax);
                 found.Add(entry);
             }
             found.Sort((a, b) => ((int)a["distance"]).CompareTo((int)b["distance"]));
@@ -702,9 +695,34 @@ namespace QudHUD
 
     // Vanilla shows a word, not a number, unless you carry something that reads exact stats off a
     // creature. These are the game's health states and their thresholds.
+    // The game already works out the word and the colour it shows for a creature's health, so ask
+    // it rather than reproducing the thresholds here. The ladder below is only a fallback for a
+    // build where those functions have moved.
     static class Health
     {
-        public static string Describe(int hp, int max)
+        static Type strings;
+        static bool searched;
+
+        public static string Describe(object o, int hp, int max)
+        {
+            if (!searched)
+            {
+                searched = true;
+                strings = R.FindTypeBySimpleName("Strings", "XRL.Rules.Strings");
+            }
+
+            string word = R.Str(R.SCallT(strings, "WoundLevel", o));
+            if (!string.IsNullOrEmpty(word) && R.Strip(word).Trim().Length > 0)
+            {
+                if (word.IndexOf("{{") >= 0) return word;  // already carries its own colour
+                string col = R.Str(R.SCallT(strings, "HealthStatusColor", o));
+                col = col == null ? "" : col.Replace("&", "").Replace("{", "").Replace("}", "").Replace("|", "").Trim();
+                return col.Length > 0 ? "{{" + col + "|" + word + "}}" : word;
+            }
+            return Ladder(hp, max);
+        }
+
+        static string Ladder(int hp, int max)
         {
             if (max <= 0) return "";
             if (hp >= max) return "{{G|Perfect}}";
@@ -716,252 +734,24 @@ namespace QudHUD
         }
     }
 
-    // What the character can actually perceive. The rule for the whole HUD is that it never shows
-    // the player something the game would not: exact hit points appear only when something they
-    // are carrying, implanted with, or afflicted by reads them out, and the player's own hit
-    // points turn into a word when something (nerve poppy) takes the numbers away.
-    //
-    // There is no published API for any of this, so every lookup here is best effort and fails
-    // closed to the vanilla readout. Put a file named debug.txt next to hud.html and the mod will
-    // write what it can see to Player.log, which is how these names get pinned down.
+    // Whether the character can read a creature's exact hit points. The game computes this for
+    // everything that grants it (VISAGE once booted, the optical scanner implants, anything modded)
+    // so the only correct implementation is to ask it. Failing to find it leaves the vanilla word,
+    // which is the safe direction: the HUD never shows more than the character can see.
     static class Perception
     {
-        static readonly string[] ScanWords = { "Indexer", "Scanner", "Bioscan", "Techscan", "Scanning" };
-        static readonly string[] BlindWords = { "NervePoppy", "Nerve_Poppy" };
+        static Type scanning;
+        static bool searched;
 
-        static bool bio, techno, anyScan, selfBlind;
-        static string lastSig;
-
-        public static bool SelfExact { get { return !selfBlind; } }
-
-        public static void Scan(GameObject player)
+        public static bool Sees(GameObject player, object target)
         {
-            bio = techno = anyScan = selfBlind = false;
-
-            foreach (object src in Sources(player))
-                foreach (object part in PartsOf(src))
-                {
-                    string n = part.GetType().Name;
-                    if (Matches(n, BlindWords)) selfBlind = true;
-                    if (!Matches(n, ScanWords) || !Live(part)) continue;
-                    anyScan = true;
-                    if (n.IndexOf("Bio", StringComparison.OrdinalIgnoreCase) >= 0) bio = true;
-                    if (n.IndexOf("Tech", StringComparison.OrdinalIgnoreCase) >= 0) techno = true;
-                }
-
-            string sig = bio + "/" + techno + "/" + anyScan + "/" + selfBlind;
-            if (sig == lastSig) return;
-            lastSig = sig;
-            try { UnityEngine.Debug.Log("[QudHUD] perception: bio=" + bio + " techno=" + techno + " anyScan=" + anyScan + " selfBlind=" + selfBlind); }
-            catch { }
-        }
-
-        // True when the player can read this creature's exact hit points.
-        public static bool Sees(object target)
-        {
-            if (!anyScan) return false;
-            if (bio && techno) return true;
-            if (!bio && !techno) return true;  // a scanner we cannot classify; assume it applies
-            return IsRobot(target) ? techno : bio;
-        }
-
-        static bool Matches(string name, string[] words)
-        {
-            foreach (string w in words)
-                if (name.IndexOf(w, StringComparison.OrdinalIgnoreCase) >= 0) return true;
-            return false;
-        }
-
-        // A scanner that is unpowered or still booting reads nothing, so ask the part whether it
-        // is currently working. Nothing to ask means nothing to gate on.
-        public static bool Live(object part)
-        {
-            // No arguments on purpose: a powered part's IsReady takes a "use charge" flag, and
-            // passing it would drain the cell every turn just to ask a question.
-            object r = R.Call(part, "IsReady");
-            if (r is bool) return (bool)r;
-            r = R.Call(part, "IsActive");
-            if (r is bool) return (bool)r;
-            object on = R.Get(part, "Enabled") ?? R.Get(part, "Active") ?? R.Get(part, "IsBooted");
-            if (on is bool) return (bool)on;
-            return true;
-        }
-
-        static bool IsRobot(object o)
-        {
-            if (R.Call(o, "GetPart", "Robot") != null) return true;
-            return R.Bool(R.Call(o, "HasTag", "Robot"));
-        }
-
-        // Everything that could grant or remove perception: the character themselves (mutations,
-        // afflictions, abilities), what they have equipped, and what is implanted in them. Not the
-        // inventory: a scanner in your pack is not switched on.
-        public static List<object> Sources(GameObject player)
-        {
-            var list = new List<object> { player };
-            object body = R.Call(player, "GetPart", "Body") ?? R.Get(player, "Body");
-
-            IEnumerable eq = R.Call(body, "GetEquippedObjects") as IEnumerable;
-            if (eq != null) foreach (object o in eq) if (o != null && !list.Contains(o)) list.Add(o);
-
-            IEnumerable bodyParts = R.Call(body, "GetParts") as IEnumerable;
-            if (bodyParts != null)
-                foreach (object bp in bodyParts)
-                {
-                    object cyber = R.Get(bp, "Cybernetics");
-                    if (cyber != null && !list.Contains(cyber)) list.Add(cyber);
-                    object worn = R.Get(bp, "Equipped");
-                    if (worn != null && !list.Contains(worn)) list.Add(worn);
-                }
-
-            return list;
-        }
-
-        // Parts, mutations and effects all live in their own collections; a scanner or an
-        // affliction could be any of the three.
-        public static List<object> PartsOf(object o)
-        {
-            var list = new List<object>();
-            string[] holders = { "PartsList", "Effects", "_Effects" };
-            foreach (string h in holders)
+            if (!searched)
             {
-                IEnumerable e = R.Get(o, h) as IEnumerable;
-                if (e != null) foreach (object p in e) if (p != null) list.Add(p);
+                searched = true;
+                scanning = R.FindTypeBySimpleName("Scanning", "XRL.World.Capabilities.Scanning");
+                if (scanning == null) UnityEngine.Debug.LogWarning("[QudHUD] no Scanning capability found; hostiles will show health words only.");
             }
-            object mut = R.Call(o, "GetPart", "Mutations");
-            IEnumerable muts = (R.Get(mut, "MutationList") ?? R.Get(mut, "ActiveMutationList")) as IEnumerable;
-            if (muts != null) foreach (object m in muts) if (m != null) list.Add(m);
-
-            if (list.Count == 0)
-            {
-                string[] known = { "BiologicalIndexer", "TechnologicalIndexer", "StructuralIndexer" };
-                foreach (string k in known)
-                {
-                    object p = R.Call(o, "GetPart", k);
-                    if (p != null) list.Add(p);
-                }
-            }
-            return list;
-        }
-
-    }
-
-    // Writes Documents/QudHUD/diagnostic.txt: what the mod can see of the character, and the names
-    // in the game's own code that look like they already compute what the player perceives. The
-    // game publishes no API, so those names have to be read off a real install rather than guessed.
-    // Nothing listed here is ever invoked: this only reads names, so it cannot touch a save.
-    static class Diagnostics
-    {
-        static string apiCache;
-        static DateTime last = DateTime.MinValue;
-
-        public static void Write(GameObject player, bool force)
-        {
-            if (player == null) return;
-            DateTime now = DateTime.UtcNow;
-            if (!force && (now - last).TotalSeconds < 30) return;
-            last = now;
-            try
-            {
-                var sb = new StringBuilder();
-                sb.Append("Qud HUD ").Append(Hud.Version).Append(" diagnostic, written ")
-                  .AppendLine(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture));
-                sb.AppendLine("Rewritten every 30 seconds of play. Nothing listed below is ever called.");
-                sb.AppendLine();
-                Seen(sb, player);
-                sb.AppendLine();
-                if (apiCache == null) apiCache = Api();
-                sb.Append(apiCache);
-                File.WriteAllText(Path.Combine(Hud.Dir, "diagnostic.txt"), sb.ToString(), new UTF8Encoding(false));
-            }
-            catch (Exception ex) { Hud.Log("diagnostic", ex); }
-        }
-
-        // The character, their equipment and their implants, with the real part names on each and
-        // whether the mod currently reads that part as switched on.
-        static void Seen(StringBuilder sb, GameObject player)
-        {
-            sb.AppendLine("== what the mod can see ==");
-            foreach (object src in Perception.Sources(player))
-            {
-                List<object> parts = Perception.PartsOf(src);
-                if (parts.Count == 0) continue;
-                string label = ReferenceEquals(src, player) ? "you" : R.Strip(Snapshot.Name(src));
-                sb.Append("  ").AppendLine(label);
-                foreach (object part in parts)
-                    sb.Append("      ").Append(part.GetType().Name)
-                      .AppendLine(Perception.Live(part) ? "   [on]" : "   [off]");
-            }
-        }
-
-        static bool Interesting(string name)
-        {
-            string[] words = { "Health", "Hitpoint", "Look", "Tooltip", "Describe", "Description",
-                               "Scan", "Indexer", "Poppy", "Wound", "Perceiv", "Reveal", "Identif" };
-            foreach (string w in words)
-                if (name.IndexOf(w, StringComparison.OrdinalIgnoreCase) >= 0) return true;
-            return false;
-        }
-
-        static string Sig(MethodInfo mi)
-        {
-            var sb = new StringBuilder();
-            sb.Append(mi.DeclaringType.FullName).Append('.').Append(mi.Name).Append('(');
-            ParameterInfo[] ps = mi.GetParameters();
-            for (int i = 0; i < ps.Length; i++)
-            {
-                if (i > 0) sb.Append(", ");
-                sb.Append(ps[i].ParameterType.Name);
-            }
-            return sb.Append(") -> ").Append(mi.ReturnType.Name).ToString();
-        }
-
-        static string Api()
-        {
-            var sb = new StringBuilder();
-            sb.AppendLine("== game code that may already compute this (names only, never called) ==");
-            var types = new List<string>();
-            var methods = new List<string>();
-            const BindingFlags all = BindingFlags.Public | BindingFlags.NonPublic
-                                   | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
-
-            foreach (Assembly asm in AppDomain.CurrentDomain.GetAssemblies())
-            {
-                if (asm.FullName.IndexOf("Assembly-CSharp", StringComparison.OrdinalIgnoreCase) < 0) continue;
-                Type[] found;
-                try { found = asm.GetTypes(); }
-                catch (ReflectionTypeLoadException ex) { found = ex.Types; }
-                catch { continue; }
-
-                foreach (Type t in found)
-                {
-                    if (t == null) continue;
-                    if (Interesting(t.Name) && types.Count < 200) types.Add(t.FullName);
-
-                    MethodInfo[] ms;
-                    try { ms = t.GetMethods(all); }
-                    catch { continue; }
-                    foreach (MethodInfo mi in ms)
-                    {
-                        if (methods.Count >= 400) break;
-                        if (mi.IsGenericMethodDefinition || !Interesting(mi.Name)) continue;
-                        // Something that reports what the player sees returns text, a yes/no or a level.
-                        Type r = mi.ReturnType;
-                        if (r != typeof(string) && r != typeof(bool) && r != typeof(int)) continue;
-                        if (mi.GetParameters().Length > 3) continue;
-                        methods.Add(Sig(mi));
-                    }
-                }
-            }
-
-            types.Sort();
-            methods.Sort();
-            sb.Append("-- types (").Append(types.Count).AppendLine(") --");
-            foreach (string t in types) sb.Append("  ").AppendLine(t);
-            sb.AppendLine();
-            sb.Append("-- methods (").Append(methods.Count).AppendLine(") --");
-            foreach (string m in methods) sb.Append("  ").AppendLine(m);
-            return sb.ToString();
+            return R.Bool(R.SCallT(scanning, "HasScanningFor", player, target));
         }
     }
 
