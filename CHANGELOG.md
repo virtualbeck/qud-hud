@@ -2,6 +2,7 @@
 
 ## 1.0.9
 - Added: AV and DV in the Combat panel now carry the game's marks, a solid diamond and a hollow circle, beside their values.
+- Fixed: with nerve poppy and a powered scanner, the hit points line showed loose numbers (17/17 2 10). The game returns a full scan readout there, hit points followed by armour and dodge, whose glyphs do not exist outside the game's own font. Being able to scan yourself now puts the line back to plain figures and a bar, and a scan readout can no longer arrive where a word is expected.
 - Fixed: the HUD showed your exact hit points to a character who cannot read them. With the nerve poppy defect the game shows a wound level on your own sheet, and the HUD now does the same, including in the low health warnings.
 
 ## 1.0.8

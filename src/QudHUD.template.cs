@@ -794,6 +794,13 @@ namespace QudHUD
             strings = R.FindTypeBySimpleName("Strings", "XRL.Rules.Strings");
         }
 
+        static bool HasFigures(string s)
+        {
+            string t = R.Strip(s);
+            for (int i = 0; i < t.Length; i++) if (char.IsDigit(t[i])) return true;
+            return false;
+        }
+
         static string Clean(string col)
         {
             if (col == null) return "";
@@ -804,7 +811,10 @@ namespace QudHUD
         {
             Ensure();
             string word = R.Str(R.SCallT(strings, "WoundLevel", o));
-            if (!string.IsNullOrEmpty(word) && R.Strip(word).Trim().Length > 0)
+            // A wound level is a word. Figures mean the game handed back a scan readout instead,
+            // hit points followed by armour and dodge, which belongs on the exact path and would
+            // otherwise arrive here as loose numbers with its glyphs stripped out.
+            if (!string.IsNullOrEmpty(word) && R.Strip(word).Trim().Length > 0 && !HasFigures(word))
             {
                 if (word.IndexOf("{{") >= 0) return word;  // already carries its own colour
                 string col = Clean(R.Str(R.SCallT(strings, "HealthStatusColor", o)));
@@ -855,7 +865,10 @@ namespace QudHUD
         // about other creatures, and HasScanningFor(you, you) is false for everyone.
         public static bool SelfExact(GameObject player)
         {
-            return R.Call(player, "GetPart", "Analgesia") == null;
+            if (R.Call(player, "GetPart", "Analgesia") == null) return true;
+            // Analgesia takes the figures off your own sheet, unless something puts them back by
+            // letting you scan yourself, which is what a powered VISAGE does.
+            return Sees(player, player);
         }
 
         public static bool Sees(GameObject player, object target)
