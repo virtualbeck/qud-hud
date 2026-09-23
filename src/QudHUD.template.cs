@@ -116,8 +116,6 @@ namespace QudHUD
             // During resting and auto-explore, cap writes to a few per second.
             if (!force && R.Bool(R.SCall("XRL.World.Capabilities.AutoAct", "IsActive")) && (now - lastWrite).TotalMilliseconds < 300) return;
 
-            Diagnostics.Write(player);
-
             string json;
             try { json = Json.Write(Snapshot.Build(player)); }
             catch (Exception ex) { Log("build", ex); return; }
@@ -298,16 +296,21 @@ namespace QudHUD
             pl["xpPrev"] = prev == null ? null : (object)R.Int(prev, 0);
 
             int hp = SV(p, "Hitpoints"), max = SB(p, "Hitpoints");
-            pl["exact"] = true;
-            pl["hp"] = hp;
-            pl["hpMax"] = max;
-            pl["hcol"] = Health.Color(p, hp, max);
+            bool exact = Perception.SelfExact(p);
+            pl["exact"] = exact;
+            if (exact)
+            {
+                pl["hp"] = hp;
+                pl["hpMax"] = max;
+                pl["hcol"] = Health.Color(p, hp, max);
+            }
+            else pl["health"] = Health.Describe(p, hp, max);
             d["player"] = pl;
 
             if (max > 0)
             {
                 double pct = (double)hp / max;
-                string text = hp + " / " + max;
+                string text = exact ? hp + " / " + max : R.Strip(Health.Describe(p, hp, max));
                 if (pct <= 0.25) Alert(alerts, 3, "Hit points critical: " + text);
                 else if (pct <= 0.5) Alert(alerts, 2, "Hit points low: " + text);
             }
@@ -846,6 +849,15 @@ namespace QudHUD
         static Type scanning;
         static bool searched;
 
+        // Whether the player reads figures on their own sheet. Nerve poppy is the Analgesia defect
+        // in code, which is why the display name appears nowhere in the assembly. It is checked by
+        // name because the game exposes no general "can I read my own hit points" call: scanning is
+        // about other creatures, and HasScanningFor(you, you) is false for everyone.
+        public static bool SelfExact(GameObject player)
+        {
+            return R.Call(player, "GetPart", "Analgesia") == null;
+        }
+
         public static bool Sees(GameObject player, object target)
         {
             if (!searched)
@@ -855,100 +867,6 @@ namespace QudHUD
                 if (scanning == null) UnityEngine.Debug.LogWarning("[QudHUD] no Scanning capability found; hostiles will show health words only.");
             }
             return R.Bool(R.SCallT(scanning, "HasScanningFor", player, target));
-        }
-    }
-
-    // Temporary. Nerve poppy hides the player's own hit points in game, but nothing in the assembly
-    // is named after it, so the mechanism has to be read off a character that actually has it.
-    // Writes Documents/QudHUD/diagnostic.txt beside hud.html, refreshed every 30 seconds.
-    static class Diagnostics
-    {
-        static DateTime last = DateTime.MinValue;
-        static string typesCache;
-
-        public static void Write(GameObject player)
-        {
-            if (player == null) return;
-            DateTime now = DateTime.UtcNow;
-            if ((now - last).TotalSeconds < 30) return;
-            last = now;
-            try
-            {
-                Type scanning = R.FindTypeBySimpleName("Scanning", "XRL.World.Capabilities.Scanning");
-                Type strings = R.FindTypeBySimpleName("Strings", "XRL.Rules.Strings");
-
-                var sb = new StringBuilder();
-                sb.Append("Qud HUD ").Append(Hud.Version).Append(" diagnostic, ")
-                  .AppendLine(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture));
-                sb.AppendLine();
-
-                // Read-only queries. Two of these the mod already calls every turn.
-                sb.AppendLine("== what the game says about you ==");
-                Ask(sb, "HasScanningFor(you, you)", R.SCallT(scanning, "HasScanningFor", player, player));
-                Ask(sb, "GetScanEpistemicStatus(you, you)", R.SCallT(scanning, "GetScanEpistemicStatus", player, player));
-                Ask(sb, "WoundLevel(you)", R.SCallT(strings, "WoundLevel", player));
-                Ask(sb, "HealthStatusColor(you)", R.SCallT(strings, "HealthStatusColor", player));
-                Ask(sb, "hitpoints", R.Get(player, "hitpoints"));
-                Ask(sb, "baseHitpoints", R.Get(player, "baseHitpoints"));
-                sb.AppendLine();
-
-                sb.AppendLine("== your parts, mutations and effects ==");
-                foreach (string n in Mine(player)) sb.Append("  ").AppendLine(n);
-                sb.AppendLine();
-
-                if (typesCache == null) typesCache = Types();
-                sb.Append(typesCache);
-
-                File.WriteAllText(Path.Combine(Hud.Dir, "diagnostic.txt"), sb.ToString(), new UTF8Encoding(false));
-            }
-            catch (Exception ex) { Hud.Log("diagnostic", ex); }
-        }
-
-        static void Ask(StringBuilder sb, string label, object value)
-        {
-            sb.Append("  ").Append(label).Append(": ")
-              .AppendLine(value == null ? "(no such call on this build)" : value.ToString());
-        }
-
-        static List<string> Mine(GameObject player)
-        {
-            var names = new List<string>();
-            string[] holders = { "PartsList", "Effects", "_Effects" };
-            foreach (string h in holders)
-            {
-                IEnumerable e = R.Get(player, h) as IEnumerable;
-                if (e != null) foreach (object p in e) if (p != null) names.Add(p.GetType().Name);
-            }
-            object mut = R.Call(player, "GetPart", "Mutations");
-            IEnumerable muts = (R.Get(mut, "MutationList") ?? R.Get(mut, "ActiveMutationList")) as IEnumerable;
-            if (muts != null) foreach (object m in muts) if (m != null) names.Add("mutation: " + m.GetType().Name);
-            return names;
-        }
-
-        // Anything in the game's code that might be what nerve poppy is called.
-        static string Types()
-        {
-            string[] words = { "Nerve", "Poppy", "Defect", "Epistem", "Obscur", "Conceal" };
-            var hits = new List<string>();
-            foreach (Assembly asm in AppDomain.CurrentDomain.GetAssemblies())
-            {
-                if (asm.FullName.IndexOf("Assembly-CSharp", StringComparison.OrdinalIgnoreCase) < 0) continue;
-                Type[] all;
-                try { all = asm.GetTypes(); }
-                catch (ReflectionTypeLoadException ex) { all = ex.Types; }
-                catch { continue; }
-                foreach (Type t in all)
-                {
-                    if (t == null || hits.Count >= 80) continue;
-                    foreach (string w in words)
-                        if (t.Name.IndexOf(w, StringComparison.OrdinalIgnoreCase) >= 0) { hits.Add(t.FullName); break; }
-                }
-            }
-            hits.Sort();
-            var sb = new StringBuilder();
-            sb.Append("== game types that might be it (").Append(hits.Count).AppendLine(") ==");
-            foreach (string h in hits) sb.Append("  ").AppendLine(h);
-            return sb.ToString();
         }
     }
 

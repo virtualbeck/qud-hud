@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.0.9
+- Fixed: the HUD showed your exact hit points to a character who cannot read them. With the nerve poppy defect the game shows a wound level on your own sheet, and the HUD now does the same, including in the low health warnings.
+
 ## 1.0.8
 - Changed: the page now waits for a quiet moment to rebuild itself. Once a rebuild is due it holds until the link goes stale, so it no longer lands in the middle of a fight, and rebuilds anyway after fifteen minutes if things never go quiet.
 - Fixed: the dot in the footer and the markers on effects had no space after them. A space written after a CSS escape is swallowed by the escape itself, so it never rendered.
