@@ -837,7 +837,7 @@ window.__qudhud={qud:qud,render:render};
 // the document lives - unreachable but never collected - so a long session grows without bound.
 // Rebuilding the document is the only way to hand that back from a file:// page. The last payload
 // and scroll position ride across in sessionStorage so the rebuild does not flash the wait screen.
-var CARRY_KEY='qudhud.carry',FLUSH_MS=5*60*1000,flushedAt=Date.now();
+var CARRY_KEY='qudhud.carry',FLUSH_MS=5*60*1000,FLUSH_MAX=15*60*1000,flushedAt=Date.now();
 try{
   var carry=JSON.parse(sessionStorage.getItem(CARRY_KEY));
   sessionStorage.removeItem(CARRY_KEY);
@@ -848,7 +848,12 @@ try{
   }
 }catch(e){}
 setInterval(function(){
-  if(Date.now()-flushedAt<FLUSH_MS||drag||!optsEl.hidden)return;
+  var due=Date.now()-flushedAt;
+  if(due<FLUSH_MS||drag||!optsEl.hidden)return;
+  // Once due, wait for a moment when nothing is arriving: a stale link means the game is closed or
+  // idle, so a rebuild cannot drop an update or interrupt a fight. Past the ceiling, rebuild anyway,
+  // or a session that never goes quiet would never reclaim anything.
+  if(due<FLUSH_MAX&&!document.body.classList.contains('stale'))return;
   try{sessionStorage.setItem(CARRY_KEY,JSON.stringify({at:Date.now(),y:window.scrollY,q:quip,p:lastPayload}));}catch(e){}
   location.reload();
 },30000);

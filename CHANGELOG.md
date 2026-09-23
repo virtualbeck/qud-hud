@@ -1,6 +1,7 @@
 # Changelog
 
 ## 1.0.8
+- Changed: the page now waits for a quiet moment to rebuild itself. Once a rebuild is due it holds until the link goes stale, so it no longer lands in the middle of a fight, and rebuilds anyway after fifteen minutes if things never go quiet.
 - Fixed: the dot in the footer and the markers on effects had no space after them. A space written after a CSS escape is swallowed by the escape itself, so it never rendered.
 - Changed: white text is now a soft off-white rather than pure white, which was harsh against the dark background at the sizes it is used for. This covers text the game itself marks as bright white, such as zone and creature names, so it is very slightly softer here than in game.
 - Fixed: hit point figures and bars were coloured from a flat percentage, so a creature at 13 of 25 read green while the game showed it amber. The colour now comes from the game, whose bands follow the wound levels rather than halves and quarters. Applies to your own hit points too.
