@@ -85,6 +85,21 @@ namespace QudHUD
             }
         }
 
+        // Create debug.txt next to hud.html to have the mod write what it can see to Player.log.
+        static int debugging = -1;
+        public static bool Debugging
+        {
+            get
+            {
+                if (debugging < 0)
+                {
+                    try { debugging = File.Exists(Path.Combine(Dir, "debug.txt")) ? 1 : 0; }
+                    catch { debugging = 0; }
+                }
+                return debugging == 1;
+            }
+        }
+
         public static void Attach(GameObject player)
         {
             if (player == null) return;
@@ -222,6 +237,7 @@ namespace QudHUD
             var d = new Dictionary<string, object>();
             var alerts = new List<Dictionary<string, object>>();
 
+            Section("perception", () => Perception.Scan(p));
             Section("player", () => BuildPlayer(p, d, alerts));
             Section("place", () => BuildPlace(p, d));
             Section("attributes", () => BuildAttributes(p, d));
@@ -230,7 +246,6 @@ namespace QudHUD
             Section("effects", () => BuildEffects(p, d, alerts));
             Section("abilities", () => BuildAbilities(p, d));
             Section("gear", () => BuildGear(p, d, alerts));
-            Section("scanners", () => Scanners.Scan(p));
             Section("hostiles", () => BuildHostiles(p, d, alerts));
 
             alerts.Sort((a, b) => ((int)b["sev"]).CompareTo((int)a["sev"]));
@@ -266,7 +281,7 @@ namespace QudHUD
             return s == null ? null : (object)R.Int(R.Get(s, "Value"), 0);
         }
 
-        static string Name(object o)
+        public static string Name(object o)
         {
             string n = R.Str(R.Get(o, "ShortDisplayName"));
             if (string.IsNullOrEmpty(n)) n = R.Str(R.Get(o, "DisplayName"));
@@ -293,15 +308,20 @@ namespace QudHUD
             pl["xpPrev"] = prev == null ? null : (object)R.Int(prev, 0);
 
             int hp = SV(p, "Hitpoints"), max = SB(p, "Hitpoints");
-            pl["hp"] = hp;
-            pl["hpMax"] = max;
+            // Nerve poppy and the like take the numbers off the player's own sheet, so the HUD
+            // shows the same word the game would rather than the figures behind it.
+            bool exact = Perception.SelfExact;
+            pl["exact"] = exact;
+            if (exact) { pl["hp"] = hp; pl["hpMax"] = max; }
+            else pl["health"] = Health.Describe(hp, max);
             d["player"] = pl;
 
             if (max > 0)
             {
                 double pct = (double)hp / max;
-                if (pct <= 0.25) Alert(alerts, 3, "Hit points critical: " + hp + " / " + max);
-                else if (pct <= 0.5) Alert(alerts, 2, "Hit points low: " + hp + " / " + max);
+                string text = exact ? hp + " / " + max : R.Strip(Health.Describe(hp, max));
+                if (pct <= 0.25) Alert(alerts, 3, "Hit points critical: " + text);
+                else if (pct <= 0.5) Alert(alerts, 2, "Hit points low: " + text);
             }
         }
 
@@ -653,7 +673,7 @@ namespace QudHUD
                 if (!R.Bool(hostile)) continue;
                 if (!CurrentlyVisible(o)) continue;
                 int hp = SV(o, "Hitpoints"), hpMax = SB(o, "Hitpoints");
-                bool exact = Scanners.Sees(o);
+                bool exact = Perception.Sees(o);
                 var entry = new Dictionary<string, object> {
                     { "name", Name(o) },
                     { "level", SV(o, "Level") },
@@ -708,41 +728,77 @@ namespace QudHUD
         }
     }
 
-    // The optical bioscanner and its relatives are what reveal exact hit points. Their parts are
-    // named *Indexer (BiologicalIndexer, TechnologicalIndexer, ...), so match on that rather than
-    // on blueprint names: modded and unreleased scanners then work without being listed here.
-    static class Scanners
+    // What the character can actually perceive. The rule for the whole HUD is that it never shows
+    // the player something the game would not: exact hit points appear only when something they
+    // are carrying, implanted with, or afflicted by reads them out, and the player's own hit
+    // points turn into a word when something (nerve poppy) takes the numbers away.
+    //
+    // There is no published API for any of this, so every lookup here is best effort and fails
+    // closed to the vanilla readout. Put a file named debug.txt next to hud.html and the mod will
+    // write what it can see to Player.log, which is how these names get pinned down.
+    static class Perception
     {
-        static bool bio, techno, any;
+        static readonly string[] ScanWords = { "Indexer", "Scanner", "Bioscan", "Techscan", "Scanning" };
+        static readonly string[] BlindWords = { "NervePoppy", "Nerve_Poppy" };
+
+        static bool bio, techno, anyScan, selfBlind;
         static string lastSig;
+
+        public static bool SelfExact { get { return !selfBlind; } }
 
         public static void Scan(GameObject player)
         {
-            bio = techno = any = false;
-            foreach (object item in Worn(player))
-            {
-                foreach (string part in PartNames(item))
+            bio = techno = anyScan = selfBlind = false;
+
+            foreach (object src in Sources(player))
+                foreach (object part in PartsOf(src))
                 {
-                    if (part.IndexOf("Indexer", StringComparison.OrdinalIgnoreCase) < 0) continue;
-                    any = true;
-                    if (part.IndexOf("Bio", StringComparison.OrdinalIgnoreCase) >= 0) bio = true;
-                    if (part.IndexOf("Techno", StringComparison.OrdinalIgnoreCase) >= 0) techno = true;
+                    string n = part.GetType().Name;
+                    if (Matches(n, BlindWords)) selfBlind = true;
+                    if (!Matches(n, ScanWords) || !Live(part)) continue;
+                    anyScan = true;
+                    if (n.IndexOf("Bio", StringComparison.OrdinalIgnoreCase) >= 0) bio = true;
+                    if (n.IndexOf("Tech", StringComparison.OrdinalIgnoreCase) >= 0) techno = true;
                 }
+
+            string sig = bio + "/" + techno + "/" + anyScan + "/" + selfBlind;
+            if (sig != lastSig)
+            {
+                lastSig = sig;
+                Say("perception: bio=" + bio + " techno=" + techno + " anyScan=" + anyScan + " selfBlind=" + selfBlind);
             }
-            string sig = bio + "/" + techno + "/" + any;
-            if (sig == lastSig) return;
-            lastSig = sig;
-            try { UnityEngine.Debug.Log("[QudHUD] exact-stat scanners: bio=" + bio + " techno=" + techno + " any=" + any); }
-            catch { }
+            Diagnostic(player);
         }
 
         // True when the player can read this creature's exact hit points.
         public static bool Sees(object target)
         {
-            if (!any) return false;
+            if (!anyScan) return false;
             if (bio && techno) return true;
-            if (!bio && !techno) return true;  // an indexer we don't recognise; assume it applies
+            if (!bio && !techno) return true;  // a scanner we cannot classify; assume it applies
             return IsRobot(target) ? techno : bio;
+        }
+
+        static bool Matches(string name, string[] words)
+        {
+            foreach (string w in words)
+                if (name.IndexOf(w, StringComparison.OrdinalIgnoreCase) >= 0) return true;
+            return false;
+        }
+
+        // A scanner that is unpowered or still booting reads nothing, so ask the part whether it
+        // is currently working. Nothing to ask means nothing to gate on.
+        static bool Live(object part)
+        {
+            object r = R.Call(part, "IsReady", true);
+            if (r is bool) return (bool)r;
+            r = R.Call(part, "IsReady");
+            if (r is bool) return (bool)r;
+            r = R.Call(part, "IsActive");
+            if (r is bool) return (bool)r;
+            object on = R.Get(part, "Enabled") ?? R.Get(part, "Active") ?? R.Get(part, "IsBooted");
+            if (on is bool) return (bool)on;
+            return true;
         }
 
         static bool IsRobot(object o)
@@ -751,41 +807,106 @@ namespace QudHUD
             return R.Bool(R.Call(o, "HasTag", "Robot"));
         }
 
-        // Implants sit in body parts' Cybernetics slots, which GetEquippedObjects does not return.
-        static List<object> Worn(GameObject player)
+        // Everything that could grant or remove perception: the character themselves (mutations,
+        // afflictions, abilities), what they have equipped, and what is implanted in them. Not the
+        // inventory: a scanner in your pack is not switched on.
+        static List<object> Sources(GameObject player)
         {
-            var list = new List<object>();
+            var list = new List<object> { player };
             object body = R.Call(player, "GetPart", "Body") ?? R.Get(player, "Body");
-            if (body == null) return list;
 
             IEnumerable eq = R.Call(body, "GetEquippedObjects") as IEnumerable;
-            if (eq != null) foreach (object o in eq) if (o != null) list.Add(o);
+            if (eq != null) foreach (object o in eq) if (o != null && !list.Contains(o)) list.Add(o);
 
-            IEnumerable parts = R.Call(body, "GetParts") as IEnumerable;
-            if (parts != null)
-                foreach (object bp in parts)
+            IEnumerable bodyParts = R.Call(body, "GetParts") as IEnumerable;
+            if (bodyParts != null)
+                foreach (object bp in bodyParts)
                 {
                     object cyber = R.Get(bp, "Cybernetics");
-                    if (cyber != null) list.Add(cyber);
+                    if (cyber != null && !list.Contains(cyber)) list.Add(cyber);
                     object worn = R.Get(bp, "Equipped");
                     if (worn != null && !list.Contains(worn)) list.Add(worn);
                 }
+
             return list;
         }
 
-        static List<string> PartNames(object o)
+        // Parts, mutations and effects all live in their own collections; a scanner or an
+        // affliction could be any of the three.
+        static List<object> PartsOf(object o)
         {
-            var names = new List<string>();
-            IEnumerable parts = R.Get(o, "PartsList") as IEnumerable;
-            if (parts != null)
+            var list = new List<object>();
+            string[] holders = { "PartsList", "Effects", "_Effects" };
+            foreach (string h in holders)
             {
-                foreach (object p in parts) if (p != null) names.Add(p.GetType().Name);
-                return names;
+                IEnumerable e = R.Get(o, h) as IEnumerable;
+                if (e != null) foreach (object p in e) if (p != null) list.Add(p);
             }
-            // No parts list on this build: fall back to asking for the ones we know by name.
-            string[] known = { "BiologicalIndexer", "TechnologicalIndexer", "StructuralIndexer" };
-            foreach (string k in known) if (R.Call(o, "GetPart", k) != null) names.Add(k);
-            return names;
+            object mut = R.Call(o, "GetPart", "Mutations");
+            IEnumerable muts = (R.Get(mut, "MutationList") ?? R.Get(mut, "ActiveMutationList")) as IEnumerable;
+            if (muts != null) foreach (object m in muts) if (m != null) list.Add(m);
+
+            if (list.Count == 0)
+            {
+                string[] known = { "BiologicalIndexer", "TechnologicalIndexer", "StructuralIndexer" };
+                foreach (string k in known)
+                {
+                    object p = R.Call(o, "GetPart", k);
+                    if (p != null) list.Add(p);
+                }
+            }
+            return list;
+        }
+
+        static void Say(string line)
+        {
+            try { UnityEngine.Debug.Log("[QudHUD] " + line); } catch { }
+        }
+
+        // Opt-in dump of everything the mod can see, so the real part names can be read off a log
+        // instead of guessed at. Enabled by creating debug.txt next to hud.html.
+        static DateTime lastDump = DateTime.MinValue;
+        static void Diagnostic(GameObject player)
+        {
+            if (!Hud.Debugging) return;
+            DateTime now = DateTime.UtcNow;
+            if ((now - lastDump).TotalSeconds < 30) return;
+            lastDump = now;
+
+            Say("---- diagnostic ----");
+            foreach (object src in Sources(player))
+            {
+                var names = new List<string>();
+                foreach (object p in PartsOf(src)) names.Add(p.GetType().Name);
+                if (names.Count == 0) continue;
+                string label = ReferenceEquals(src, player) ? "you" : R.Strip(Snapshot.Name(src));
+                Say("  " + label + ": " + string.Join(", ", names.ToArray()));
+
+            }
+            foreach (string t in ApiCandidates()) Say("  api: " + t);
+            Say("---- end diagnostic ----");
+        }
+
+        // Names in the game's own code that look like they govern scanning or health readouts.
+        static List<string> ApiCandidates()
+        {
+            var hits = new List<string>();
+            string[] words = { "Indexer", "Bioscan", "Techscan", "HealthLevel", "NervePoppy" };
+            foreach (Assembly asm in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                if (asm.FullName.IndexOf("Assembly-CSharp", StringComparison.OrdinalIgnoreCase) < 0) continue;
+                Type[] all;
+                try { all = asm.GetTypes(); }
+                catch (ReflectionTypeLoadException ex) { all = ex.Types; }
+                catch { continue; }
+                foreach (Type t in all)
+                {
+                    if (t == null || !Matches(t.Name, words)) continue;
+                    hits.Add(t.FullName);
+                    if (hits.Count >= 40) return hits;
+                }
+            }
+            return hits;
         }
     }
 

@@ -41,6 +41,7 @@ body{
 #vitals .hpnum{display:flex;justify-content:space-between;align-items:baseline}
 #vitals .hpnum b{font-size:2rem;font-weight:normal;line-height:1}
 #vitals .hpbar{height:1.15rem}
+#vitals .hpword{font-size:1.5rem;font-weight:normal;line-height:1}
 
 /* warnings: the loudest thing on screen */
 #warn{border-color:var(--frame)}
@@ -277,8 +278,14 @@ function renderHead(d){
   }
   $('who').innerHTML='<div class="name">'+qud(p.name||'Unknown')+'</div><div class="sub">Level '+num(p.level)+(sub?' '+sub:'')+'</div>'+xp;
 
-  var hp=p.hp||0,mx=p.hpMax||0,pc=mx>0?hp/mx:0,col=pctColor(pc);
-  $('vitals').innerHTML='<div class="hpnum"><span class="dim">Hit points</span><span><b style="color:'+col+'">'+hp+'</b> <span class="dim">/ '+mx+'</span></span></div>'+bar(hp,mx,col,'hpbar');
+  // Exact figures only arrive when the character can actually read them off their own sheet.
+  if(p.exact===false){
+    $('vitals').innerHTML='<div class="hpnum"><span class="dim">Hit points</span>'+
+      '<b class="hpword">'+qud(p.health||'')+'</b></div>';
+  }else{
+    var hp=p.hp||0,mx=p.hpMax||0,pc=mx>0?hp/mx:0,col=pctColor(pc);
+    $('vitals').innerHTML='<div class="hpnum"><span class="dim">Hit points</span><span><b style="color:'+col+'">'+hp+'</b> <span class="dim">/ '+mx+'</span></span></div>'+bar(hp,mx,col,'hpbar');
+  }
 
   var z=d.zone||{},c=d.clock||{},h='';
   if(z.name)h+='<div class="zname">'+qud(z.name)+'</div>';

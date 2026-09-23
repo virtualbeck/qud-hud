@@ -1,7 +1,9 @@
 # Changelog
 
 ## 1.0.7
-- Changed: Hostiles in sight now shows a creature's health the way the game does, as Perfect, Fine, Injured, Wounded or Badly Wounded. The exact hit point bar is only drawn when you are carrying something that reads exact stats off that creature, such as an optical bioscanner for living things or a technoscanner for robots. Without one, the numbers are no longer sent to the page at all.
+- Changed: the HUD no longer shows you anything your character cannot see. Hostiles read as Perfect, Fine, Injured, Wounded or Badly Wounded, the same words the game uses, and an exact hit point bar is only drawn when something you are wearing, implanted with or afflicted by reads that creature's stats, such as VISAGE or an optical bioscanner. The scanner has to be powered and booted, not merely carried.
+- Changed: the same rule now applies to your own hit points. If something takes the numbers off your sheet, such as nerve poppy, the HUD shows the word instead, and the low health warnings stop quoting figures.
+- Added: create a file called `debug.txt` next to `hud.html` and the mod writes what it can see of your equipment, implants and mutations to `Player.log`, which is the quickest way to report a scanner the HUD fails to notice.
 
 ## 1.0.6
 - Added: panels can be hidden, not just moved. The new × on a panel hides it, and Options lists every panel so you can bring it back. R still restores the default layout and unhides everything.
