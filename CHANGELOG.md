@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.0.8
+- Fixed: hit point figures and bars were coloured from a flat percentage, so a creature at 13 of 25 read green while the game showed it amber. The colour now comes from the game, whose bands follow the wound levels rather than halves and quarters. Applies to your own hit points too.
+
 ## 1.0.7
 - Changed: the HUD no longer shows you anything your character cannot see. Hostiles read as Perfect, Fine, Injured, Wounded or Badly Wounded, using the game's own wound level and colour, and an exact hit point bar is only drawn when your character can actually read those numbers. The game decides that rather than this mod, so VISAGE once it has booted, the optical scanner implants and anything a mod adds all count, and a scanner that is switched off does not. Without one the numbers are not sent to the page at all.
 - Changed: when you can read a creature's exact hit points, the figures are shown beside the bar rather than the bar alone.

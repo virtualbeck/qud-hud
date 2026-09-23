@@ -299,6 +299,7 @@ namespace QudHUD
             pl["exact"] = true;
             pl["hp"] = hp;
             pl["hpMax"] = max;
+            pl["hcol"] = Health.Color(p, hp, max);
             d["player"] = pl;
 
             if (max > 0)
@@ -687,7 +688,7 @@ namespace QudHUD
                 };
                 // Without a scanner the exact numbers are not sent at all, so the page cannot
                 // leak them back through a proportional bar.
-                if (exact) { entry["hp"] = hp; entry["hpMax"] = hpMax; }
+                if (exact) { entry["hp"] = hp; entry["hpMax"] = hpMax; entry["hcol"] = Health.Color(o, hp, hpMax); }
                 else entry["health"] = Health.Describe(o, hp, hpMax);
 
                 // What is wrong with it, filtered by the game's own rule for what shows when you
@@ -781,34 +782,56 @@ namespace QudHUD
         static Type strings;
         static bool searched;
 
+        static void Ensure()
+        {
+            if (searched) return;
+            searched = true;
+            strings = R.FindTypeBySimpleName("Strings", "XRL.Rules.Strings");
+        }
+
+        static string Clean(string col)
+        {
+            if (col == null) return "";
+            return col.Replace("&", "").Replace("{", "").Replace("}", "").Replace("|", "").Trim();
+        }
+
         public static string Describe(object o, int hp, int max)
         {
-            if (!searched)
-            {
-                searched = true;
-                strings = R.FindTypeBySimpleName("Strings", "XRL.Rules.Strings");
-            }
-
+            Ensure();
             string word = R.Str(R.SCallT(strings, "WoundLevel", o));
             if (!string.IsNullOrEmpty(word) && R.Strip(word).Trim().Length > 0)
             {
                 if (word.IndexOf("{{") >= 0) return word;  // already carries its own colour
-                string col = R.Str(R.SCallT(strings, "HealthStatusColor", o));
-                col = col == null ? "" : col.Replace("&", "").Replace("{", "").Replace("}", "").Replace("|", "").Trim();
+                string col = Clean(R.Str(R.SCallT(strings, "HealthStatusColor", o)));
                 return col.Length > 0 ? "{{" + col + "|" + word + "}}" : word;
             }
-            return Ladder(hp, max);
+            string w, c;
+            Ladder(hp, max, out w, out c);
+            return w.Length > 0 ? "{{" + c + "|" + w + "}}" : "";
         }
 
-        static string Ladder(int hp, int max)
+        // The colour the game gives this creature's health, so the figures and the bar match what
+        // the game would show. Its bands follow the wound levels, not a plain percentage: 52% of
+        // maximum is Injured and reads amber, where halving a percentage would still call it green.
+        public static string Color(object o, int hp, int max)
         {
-            if (max <= 0) return "";
-            if (hp >= max) return "{{G|Perfect}}";
+            Ensure();
+            string col = Clean(R.Str(R.SCallT(strings, "HealthStatusColor", o)));
+            if (col.Length > 0) return col;
+            string w, c;
+            Ladder(hp, max, out w, out c);
+            return c;
+        }
+
+        static void Ladder(int hp, int max, out string word, out string col)
+        {
+            if (max <= 0) { word = ""; col = ""; return; }
+            if (hp >= max) { word = "Perfect"; col = "G"; return; }
             int pct = (int)(100.0 * hp / max);
-            if (pct >= 66) return "{{g|Fine}}";
-            if (pct >= 33) return "{{W|Injured}}";
-            if (pct >= 15) return "{{o|Wounded}}";
-            return "{{R|Badly Wounded}}";
+            if (pct >= 66) { word = "Fine"; col = "g"; }
+            else if (pct >= 33) { word = "Injured"; col = "W"; }
+            else if (pct >= 15) { word = "Wounded"; col = "o"; }
+            else { word = "Badly Wounded"; col = "R"; }
         }
     }
 

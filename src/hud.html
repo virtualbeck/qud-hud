@@ -295,7 +295,7 @@ function renderHead(d){
     $('vitals').innerHTML='<div class="hpnum"><span class="dim">Hit points</span>'+
       '<b class="hpword">'+qud(p.health||'')+'</b></div>';
   }else{
-    var hp=p.hp||0,mx=p.hpMax||0,pc=mx>0?hp/mx:0,col=pctColor(pc);
+    var hp=p.hp||0,mx=p.hpMax||0,pc=mx>0?hp/mx:0,col=PAL[p.hcol]||pctColor(pc);
     $('vitals').innerHTML='<div class="hpnum"><span class="dim">Hit points</span><span><b style="color:'+col+'">'+hp+'</b> <span class="dim">/ '+mx+'</span></span></div>'+bar(hp,mx,col,'hpbar');
   }
 
@@ -452,7 +452,9 @@ function renderFoes(d){
     // Exact hit points only arrive when the player can read them, so a bar is only ever drawn from
     // real numbers. Otherwise the game's own health word stands in for it.
     if(x.exact&&x.hpMax>0){
-      var col=pctColor(x.hp/x.hpMax);
+      // The game's own health colour, whose bands follow the wound levels rather than a plain
+      // percentage, so the figures agree with what the game shows for the same creature.
+      var col=PAL[x.hcol]||pctColor(x.hp/x.hpMax);
       hp='<div class="hpline"><span class="hpnum" style="color:'+col+'">'+x.hp+'/'+x.hpMax+'</span>'+
          bar(x.hp,x.hpMax,col,'hp')+'</div>';
     }else hp=x.health?'<div class="hpw">'+qud(x.health)+'</div>':'';
