@@ -87,6 +87,9 @@ body{
 .stats{display:grid;grid-template-columns:repeat(5,1fr);gap:.4rem;text-align:center}
 .stats .k{color:var(--dim);font-size:.85rem}
 .stats .v{font-size:1.25rem;color:var(--white)}
+/* the game's armour and dodge marks, as close as Unicode gets to its own sprites */
+.stats .av::before{content:'\25C6\00A0';color:#0096ff;font-size:.72em;vertical-align:.1em}
+.stats .dv::before{content:'\25CB\00A0';color:var(--dim);font-size:.72em;vertical-align:.1em}
 .res{display:grid;grid-template-columns:repeat(4,1fr);gap:.4rem;text-align:center;margin-top:.6rem;padding-top:.5rem;border-top:1px dashed var(--frame)}
 
 .foe .hp{height:.4rem;margin-top:.15rem}
@@ -492,8 +495,8 @@ function renderAttrs(d){
 
 function renderCombat(d){
   var c=d.combat||{},r=d.resist||{};
-  function st(k,v,col){return '<div><div class="k">'+k+'</div><div class="v"'+(col?' style="color:'+col+'"':'')+'>'+num(v)+'</div></div>';}
-  $('combat').innerHTML='<div class="stats">'+st('AV',c.av)+st('DV',c.dv)+st('MA',c.ma)+st('QN',c.quickness)+st('MS',c.moveSpeed)+'</div>'+
+  function st(k,v,col,cls){return '<div><div class="k">'+k+'</div><div class="v'+(cls?' '+cls:'')+'"'+(col?' style="color:'+col+'"':'')+'>'+num(v)+'</div></div>';}
+  $('combat').innerHTML='<div class="stats">'+st('AV',c.av,'','av')+st('DV',c.dv,'','dv')+st('MA',c.ma)+st('QN',c.quickness)+st('MS',c.moveSpeed)+'</div>'+
     '<div class="stats res" style="grid-template-columns:repeat(4,1fr)">'+st('Heat',r.heat,'#d74200')+st('Cold',r.cold,'#77bfcf')+st('Acid',r.acid,'#00c420')+st('Elec',r.elec,'#cfc041')+'</div>';
 }
 

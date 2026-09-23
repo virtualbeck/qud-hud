@@ -1,6 +1,7 @@
 # Changelog
 
 ## 1.0.9
+- Added: AV and DV in the Combat panel now carry the game's marks, a solid diamond and a hollow circle, beside their values.
 - Fixed: the HUD showed your exact hit points to a character who cannot read them. With the nerve poppy defect the game shows a wound level on your own sheet, and the HUD now does the same, including in the low health warnings.
 
 ## 1.0.8
