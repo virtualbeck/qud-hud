@@ -1,12 +1,12 @@
 # Changelog
 
 ## 1.0.7
-- Added: Hostiles in sight has a Sort toggle, switching between nearest first and most dangerous first. Your choice is remembered. Sorting by danger weighs the game's difficulty rating first, then how big the creature is, then how close it is, since a high level character reads almost everything as Trivial and the rating alone stops telling you much.
+- Changed: the HUD no longer shows you anything your character cannot see. Hostiles read as Perfect, Fine, Injured, Wounded or Badly Wounded, using the game's own wound level and colour, and an exact hit point bar is only drawn when your character can actually read those numbers. The game decides that rather than this mod, so VISAGE once it has booted, the optical scanner implants and anything a mod adds all count, and a scanner that is switched off does not. Without one the numbers are not sent to the page at all.
+- Changed: when you can read a creature's exact hit points, the figures are shown beside the bar rather than the bar alone.
+- Added: Hostiles in sight lists what is wrong with each creature, bleeding and the like, in the same style and colours as your own Effects panel. The game's own rule for what shows when you look at a creature decides the list, so nothing appears that you could not see by looking.
+- Added: a Sort toggle on Hostiles in sight, switching between nearest first and most dangerous first. Your choice is remembered. Sorting by danger weighs the game's difficulty rating first, then how big the creature is, then how close it is, since a high level character reads almost everything as Trivial and the rating alone stops telling you much.
+- Changed: hostiles at the same distance are ordered by how dangerous they are, and those tied on both by which has the most hit points left.
 - Added: unspent point reminders in Pressing matters can be dismissed with the × beside them. A dismissal lasts until the number changes, so spending them clears it and earning more brings the reminder back. The totals stay in Survival either way.
-- Changed: hostiles at the same distance are now ordered by how dangerous they are, and hostiles tied on both by which has the most hit points left.
-- Added: Hostiles in sight now lists what is wrong with each creature, bleeding and the like, in the same style and colours as your own Effects panel. The game's own rule for what shows when you look at a creature decides the list, so nothing appears that you could not see by looking.
-- Changed: when you can read a creature's exact hit points, the figures are now shown next to the bar rather than the bar alone.
-- Changed: Hostiles in sight now shows a creature's health as the game does, using the game's own wound level and colour, and only draws an exact hit point bar when your character can actually read those numbers. Whether they can is decided by the game rather than by this mod, so VISAGE once it has booted, the optical scanner implants and anything a mod adds all count, and a scanner that is switched off does not. Without one, the numbers are not sent to the page at all.
 
 ## 1.0.6
 - Added: panels can be hidden, not just moved. The new × on a panel hides it, and Options lists every panel so you can bring it back. R still restores the default layout and unhides everything.
