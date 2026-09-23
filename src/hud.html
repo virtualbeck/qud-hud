@@ -85,6 +85,7 @@ body{
 .res{display:grid;grid-template-columns:repeat(4,1fr);gap:.4rem;text-align:center;margin-top:.6rem;padding-top:.5rem;border-top:1px dashed var(--frame)}
 
 .foe .hp{height:.4rem;margin-top:.15rem}
+.foe .hpw{font-size:.88rem;margin-top:.05rem}
 .foe.adj .dist{color:var(--crit)}
 .ab.cool{color:var(--dim)}
 .ab .r{color:var(--good)}
@@ -389,11 +390,15 @@ function renderFoes(d){
   if(f===null||f===undefined){$('foes').innerHTML=empty('Hostile tracking unavailable in this game version.');return;}
   if(!f.length){$('foes').innerHTML=empty('No hostiles in sight.');return;}
   $('foes').innerHTML=f.map(function(x){
-    var pc=x.hpMax>0?x.hp/x.hpMax:0,dir=DIR_GLYPH[x.dir]||'';
+    var dir=DIR_GLYPH[x.dir]||'',hp;
+    // Exact hit points only arrive when the player carries a scanner that reads them, so a bar is
+    // only ever drawn from real numbers. Otherwise the game's own health word stands in for it.
+    if(x.exact&&x.hpMax>0)hp=bar(x.hp,x.hpMax,pctColor(x.hp/x.hpMax),'hp');
+    else hp=x.health?'<div class="hpw">'+qud(x.health)+'</div>':'';
     return '<div class="item foe'+(x.distance<=1?' adj':'')+'">'+
       row(qud(x.name)+' <span class="dim">L'+num(x.level)+'</span>'+(x.rating?' '+qud(x.rating):''),
           '<span class="dist">'+(x.distance<=1?'adjacent':x.distance+' away')+(dir?' '+dir:'')+'</span>')+
-      bar(x.hp,x.hpMax,pctColor(pc),'hp')+'</div>';
+      hp+'</div>';
   }).join('');
 }
 

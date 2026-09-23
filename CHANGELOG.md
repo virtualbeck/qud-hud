@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.0.7
+- Changed: Hostiles in sight now shows a creature's health the way the game does, as Perfect, Fine, Injured, Wounded or Badly Wounded. The exact hit point bar is only drawn when you are carrying something that reads exact stats off that creature, such as an optical bioscanner for living things or a technoscanner for robots. Without one, the numbers are no longer sent to the page at all.
+
 ## 1.0.6
 - Added: panels can be hidden, not just moved. The new × on a panel hides it, and Options lists every panel so you can bring it back. R still restores the default layout and unhides everything.
 - Added: the readings fade out when the link goes stale, so a closed game no longer looks like a live one at a glance.

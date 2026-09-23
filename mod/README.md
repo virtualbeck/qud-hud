@@ -24,6 +24,7 @@ The dot at the bottom left tells you whether what you're looking at is current:
 
 ## Notes
 - The page reads a local file; no server or internet connection is needed.
+- Hostiles show a health word (Perfect, Fine, Injured, Wounded, Badly Wounded), the same as looking at them in game. You only get an exact hit point bar for creatures something you carry can scan, such as an optical bioscanner for living things or a technoscanner for robots.
 - The mod adds a small tracker part to your character. Keep the mod enabled for saves made with it.
 - If a section stays empty after a game update, check `Player.log` for lines starting with `[QudHUD]`. If a panel stops drawing entirely, the footer names it and the browser console has the error.
 

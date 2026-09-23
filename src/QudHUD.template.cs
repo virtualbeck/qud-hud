@@ -230,6 +230,7 @@ namespace QudHUD
             Section("effects", () => BuildEffects(p, d, alerts));
             Section("abilities", () => BuildAbilities(p, d));
             Section("gear", () => BuildGear(p, d, alerts));
+            Section("scanners", () => Scanners.Scan(p));
             Section("hostiles", () => BuildHostiles(p, d, alerts));
 
             alerts.Sort((a, b) => ((int)b["sev"]).CompareTo((int)a["sev"]));
@@ -651,15 +652,21 @@ namespace QudHUD
                 if (hostile == null) hostile = R.Call(R.Call(o, "GetPart", "Brain"), "IsHostileTowards", p);
                 if (!R.Bool(hostile)) continue;
                 if (!CurrentlyVisible(o)) continue;
-                found.Add(new Dictionary<string, object> {
+                int hp = SV(o, "Hitpoints"), hpMax = SB(o, "Hitpoints");
+                bool exact = Scanners.Sees(o);
+                var entry = new Dictionary<string, object> {
                     { "name", Name(o) },
                     { "level", SV(o, "Level") },
                     { "rating", Rating(o, p) },
                     { "distance", R.Int(R.Call(p, "DistanceTo", o), 99) },
                     { "dir", Direction(p, o) },
-                    { "hp", SV(o, "Hitpoints") },
-                    { "hpMax", SB(o, "Hitpoints") }
-                });
+                    { "exact", exact }
+                };
+                // Without a scanner the exact numbers are not sent at all, so the page cannot
+                // leak them back through a proportional bar.
+                if (exact) { entry["hp"] = hp; entry["hpMax"] = hpMax; }
+                else entry["health"] = Health.Describe(hp, hpMax);
+                found.Add(entry);
             }
             found.Sort((a, b) => ((int)a["distance"]).CompareTo((int)b["distance"]));
 
@@ -682,6 +689,103 @@ namespace QudHUD
 
             if (adjacent > 0) Alert(alerts, 3, adjacent + " hostile" + (adjacent == 1 ? "" : "s") + " adjacent to you");
             else if (found.Count > 0) Alert(alerts, 2, found.Count + " hostile" + (found.Count == 1 ? "" : "s") + " in sight, nearest " + found[0]["distance"] + " away");
+        }
+    }
+
+    // Vanilla shows a word, not a number, unless you carry something that reads exact stats off a
+    // creature. These are the game's health states and their thresholds.
+    static class Health
+    {
+        public static string Describe(int hp, int max)
+        {
+            if (max <= 0) return "";
+            if (hp >= max) return "{{G|Perfect}}";
+            int pct = (int)(100.0 * hp / max);
+            if (pct >= 66) return "{{g|Fine}}";
+            if (pct >= 33) return "{{W|Injured}}";
+            if (pct >= 15) return "{{o|Wounded}}";
+            return "{{R|Badly Wounded}}";
+        }
+    }
+
+    // The optical bioscanner and its relatives are what reveal exact hit points. Their parts are
+    // named *Indexer (BiologicalIndexer, TechnologicalIndexer, ...), so match on that rather than
+    // on blueprint names: modded and unreleased scanners then work without being listed here.
+    static class Scanners
+    {
+        static bool bio, techno, any;
+        static string lastSig;
+
+        public static void Scan(GameObject player)
+        {
+            bio = techno = any = false;
+            foreach (object item in Worn(player))
+            {
+                foreach (string part in PartNames(item))
+                {
+                    if (part.IndexOf("Indexer", StringComparison.OrdinalIgnoreCase) < 0) continue;
+                    any = true;
+                    if (part.IndexOf("Bio", StringComparison.OrdinalIgnoreCase) >= 0) bio = true;
+                    if (part.IndexOf("Techno", StringComparison.OrdinalIgnoreCase) >= 0) techno = true;
+                }
+            }
+            string sig = bio + "/" + techno + "/" + any;
+            if (sig == lastSig) return;
+            lastSig = sig;
+            try { UnityEngine.Debug.Log("[QudHUD] exact-stat scanners: bio=" + bio + " techno=" + techno + " any=" + any); }
+            catch { }
+        }
+
+        // True when the player can read this creature's exact hit points.
+        public static bool Sees(object target)
+        {
+            if (!any) return false;
+            if (bio && techno) return true;
+            if (!bio && !techno) return true;  // an indexer we don't recognise; assume it applies
+            return IsRobot(target) ? techno : bio;
+        }
+
+        static bool IsRobot(object o)
+        {
+            if (R.Call(o, "GetPart", "Robot") != null) return true;
+            return R.Bool(R.Call(o, "HasTag", "Robot"));
+        }
+
+        // Implants sit in body parts' Cybernetics slots, which GetEquippedObjects does not return.
+        static List<object> Worn(GameObject player)
+        {
+            var list = new List<object>();
+            object body = R.Call(player, "GetPart", "Body") ?? R.Get(player, "Body");
+            if (body == null) return list;
+
+            IEnumerable eq = R.Call(body, "GetEquippedObjects") as IEnumerable;
+            if (eq != null) foreach (object o in eq) if (o != null) list.Add(o);
+
+            IEnumerable parts = R.Call(body, "GetParts") as IEnumerable;
+            if (parts != null)
+                foreach (object bp in parts)
+                {
+                    object cyber = R.Get(bp, "Cybernetics");
+                    if (cyber != null) list.Add(cyber);
+                    object worn = R.Get(bp, "Equipped");
+                    if (worn != null && !list.Contains(worn)) list.Add(worn);
+                }
+            return list;
+        }
+
+        static List<string> PartNames(object o)
+        {
+            var names = new List<string>();
+            IEnumerable parts = R.Get(o, "PartsList") as IEnumerable;
+            if (parts != null)
+            {
+                foreach (object p in parts) if (p != null) names.Add(p.GetType().Name);
+                return names;
+            }
+            // No parts list on this build: fall back to asking for the ones we know by name.
+            string[] known = { "BiologicalIndexer", "TechnologicalIndexer", "StructuralIndexer" };
+            foreach (string k in known) if (R.Call(o, "GetPart", k) != null) names.Add(k);
+            return names;
         }
     }
 
