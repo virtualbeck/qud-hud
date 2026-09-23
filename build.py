@@ -22,6 +22,15 @@ never creates a new one; it leaves the Workshop description alone.
 on a version with no CHANGELOG section, or when the tag already exists. Release
 notes cover every CHANGELOG section since the previous tag, so versions that
 were never released still reach people who download the zip.
+
+Releasing, in order:
+  1. bump VERSION, add its CHANGELOG section
+  2. --install, test in game, repeat; --uninstall when done
+  3. commit and push, since --release refuses to run on a dirty tree
+  4. --release   tags, pushes the tag, publishes the zip on GitHub
+  5. --workshop  pushes the same build to Steam
+Given both flags at once, --release runs first so its checks fail before Steam
+sees anything.
 """
 import json, os, re, shutil, subprocess, sys, zipfile
 from pathlib import Path
@@ -302,7 +311,9 @@ if __name__ == "__main__":
         i = sys.argv.index("--install")
         target = sys.argv[i + 1] if i + 1 < len(sys.argv) else mods_dir()
         install(folder, target)
-    if "--workshop" in sys.argv:
-        publish_workshop(folder, (ROOT / "VERSION").read_text().strip())
+    # --release before --workshop when both are given: it is the step with preconditions, so a
+    # dirty tree or a missing changelog section stops things before anything reaches Steam.
     if "--release" in sys.argv:
         release((ROOT / "VERSION").read_text().strip(), "--yes" in sys.argv)
+    if "--workshop" in sys.argv:
+        publish_workshop(folder, (ROOT / "VERSION").read_text().strip())
