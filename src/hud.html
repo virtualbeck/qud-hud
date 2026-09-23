@@ -95,6 +95,10 @@ body{
 .foe .hpline .hpnum{font-size:.88rem;white-space:nowrap;font-variant-numeric:tabular-nums}
 .foe .hpline .hp{flex:1;margin-top:0}
 .foe .foefx{font-size:.85rem;margin-top:.1rem;display:flex;flex-wrap:wrap;gap:0 .8rem}
+.foesort{text-align:right;margin-bottom:.3rem}
+.sortbtn{font:inherit;font-size:.85rem;background:none;border:0;cursor:pointer;color:var(--frame-hi);padding:0}
+.sortbtn:hover,.sortbtn:focus-visible{color:var(--gold)}
+.sortbtn:focus-visible{outline:1px solid var(--gold);outline-offset:1px}
 .foe.adj .dist{color:var(--crit)}
 .ab.cool{color:var(--dim)}
 .ab .r{color:var(--good)}
@@ -423,11 +427,28 @@ function renderAbilities(d){
 }
 
 var DIR_GLYPH={N:'↑',NE:'↗',E:'→',SE:'↘',S:'↓',SW:'↙',W:'←',NW:'↖',here:'•'};
+var SORT_KEY='qudhud.foeSort',foeSort='near';
+try{var fs0=localStorage.getItem(SORT_KEY);if(fs0==='danger'||fs0==='near')foeSort=fs0;}catch(e){}
+function setFoeSort(m){
+  foeSort=m;
+  try{localStorage.setItem(SORT_KEY,m);}catch(e){}
+  if(lastPayload)render(lastPayload);
+}
 function renderFoes(d){
   var f=d.hostiles;
   if(f===null||f===undefined){$('foes').innerHTML=empty('Hostile tracking unavailable in this game version.');return;}
   if(!f.length){$('foes').innerHTML=empty('No hostiles in sight.');return;}
-  $('foes').innerHTML=f.map(function(x){
+  // They arrive nearest first, already broken by danger and then by hit points. Sorting that by
+  // danger alone is stable, so both of those tiebreaks survive underneath it, and the page never
+  // needs the hit points it may not be allowed to know.
+  var list=foeSort==='danger'
+    ? f.slice().sort(function(a,b){return (b.danger||0)-(a.danger||0);})
+    : f;
+  var byDanger=foeSort==='danger';
+  var head='<div class="foesort"><button type="button" class="sortbtn" data-mode="'+
+    (byDanger?'near':'danger')+'" title="Show '+(byDanger?'nearest':'most dangerous')+' first">Sort: '+
+    (byDanger?'Dangerous':'Nearest')+'</button></div>';
+  $('foes').innerHTML=head+list.map(function(x){
     var dir=DIR_GLYPH[x.dir]||'',hp;
     // Exact hit points only arrive when the player can read them, so a bar is only ever drawn from
     // real numbers. Otherwise the game's own health word stands in for it.
@@ -797,10 +818,14 @@ document.addEventListener('pointerdown',function(e){
 syncOpts();
 $('ver').textContent=PAGE_VERSION;
 
-// Delegated, because Pressing matters is rewritten on every update.
+// Delegated, because both panels are rewritten on every update.
 $('warnBody').addEventListener('click',function(e){
   var t=e.target;
   if(t&&t.classList&&t.classList.contains('drop'))dismiss(t.getAttribute('data-text'));
+});
+$('foes').addEventListener('click',function(e){
+  var t=e.target;
+  if(t&&t.classList&&t.classList.contains('sortbtn'))setFoeSort(t.getAttribute('data-mode'));
 });
 
 window.__qudhud={qud:qud,render:render};

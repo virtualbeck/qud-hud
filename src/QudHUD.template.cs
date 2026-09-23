@@ -707,9 +707,10 @@ namespace QudHUD
                 }
                 if (fx.Count > 0) entry["effects"] = fx;
 
-                // Sort keys, stripped before the list is sent: hit points order the list even when
-                // the player may not read them, so they must not travel to the page.
-                entry["_danger"] = DangerRank((string)entry["rating"]);
+                // danger travels with the list so the page can re-sort by it; the rating it comes
+                // from is on screen anyway. Hit points order the list even for creatures whose
+                // numbers the player may not read, so that key is stripped before sending.
+                entry["danger"] = DangerRank((string)entry["rating"]);
                 entry["_hp"] = hp;
                 found.Add(entry);
             }
@@ -719,7 +720,7 @@ namespace QudHUD
             {
                 int c = ((int)a["distance"]).CompareTo((int)b["distance"]);
                 if (c != 0) return c;
-                c = ((int)b["_danger"]).CompareTo((int)a["_danger"]);
+                c = ((int)b["danger"]).CompareTo((int)a["danger"]);
                 if (c != 0) return c;
                 return ((int)b["_hp"]).CompareTo((int)a["_hp"]);
             });
@@ -730,7 +731,6 @@ namespace QudHUD
             {
                 if ((int)found[i]["distance"] <= 1) adjacent++;
                 if (i >= 15) continue;
-                found[i].Remove("_danger");
                 found[i].Remove("_hp");
                 list.Add(found[i]);
             }
