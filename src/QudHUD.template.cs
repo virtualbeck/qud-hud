@@ -85,21 +85,6 @@ namespace QudHUD
             }
         }
 
-        // Create debug.txt next to hud.html to have the mod write what it can see to Player.log.
-        static int debugging = -1;
-        public static bool Debugging
-        {
-            get
-            {
-                if (debugging < 0)
-                {
-                    try { debugging = File.Exists(Path.Combine(Dir, "debug.txt")) ? 1 : 0; }
-                    catch { debugging = 0; }
-                }
-                return debugging == 1;
-            }
-        }
-
         public static void Attach(GameObject player)
         {
             if (player == null) return;
@@ -122,6 +107,7 @@ namespace QudHUD
                 UnityEngine.Debug.Log("[QudHUD] Display page: " + path);
             }
             Update(player, true);
+            Diagnostics.Write(player, true);
         }
 
         public static void Update(GameObject player, bool force)
@@ -130,6 +116,8 @@ namespace QudHUD
             DateTime now = DateTime.UtcNow;
             // During resting and auto-explore, cap writes to a few per second.
             if (!force && R.Bool(R.SCall("XRL.World.Capabilities.AutoAct", "IsActive")) && (now - lastWrite).TotalMilliseconds < 300) return;
+
+            Diagnostics.Write(player, false);
 
             string json;
             try { json = Json.Write(Snapshot.Build(player)); }
@@ -762,12 +750,10 @@ namespace QudHUD
                 }
 
             string sig = bio + "/" + techno + "/" + anyScan + "/" + selfBlind;
-            if (sig != lastSig)
-            {
-                lastSig = sig;
-                Say("perception: bio=" + bio + " techno=" + techno + " anyScan=" + anyScan + " selfBlind=" + selfBlind);
-            }
-            Diagnostic(player);
+            if (sig == lastSig) return;
+            lastSig = sig;
+            try { UnityEngine.Debug.Log("[QudHUD] perception: bio=" + bio + " techno=" + techno + " anyScan=" + anyScan + " selfBlind=" + selfBlind); }
+            catch { }
         }
 
         // True when the player can read this creature's exact hit points.
@@ -788,11 +774,11 @@ namespace QudHUD
 
         // A scanner that is unpowered or still booting reads nothing, so ask the part whether it
         // is currently working. Nothing to ask means nothing to gate on.
-        static bool Live(object part)
+        public static bool Live(object part)
         {
-            object r = R.Call(part, "IsReady", true);
-            if (r is bool) return (bool)r;
-            r = R.Call(part, "IsReady");
+            // No arguments on purpose: a powered part's IsReady takes a "use charge" flag, and
+            // passing it would drain the cell every turn just to ask a question.
+            object r = R.Call(part, "IsReady");
             if (r is bool) return (bool)r;
             r = R.Call(part, "IsActive");
             if (r is bool) return (bool)r;
@@ -810,7 +796,7 @@ namespace QudHUD
         // Everything that could grant or remove perception: the character themselves (mutations,
         // afflictions, abilities), what they have equipped, and what is implanted in them. Not the
         // inventory: a scanner in your pack is not switched on.
-        static List<object> Sources(GameObject player)
+        public static List<object> Sources(GameObject player)
         {
             var list = new List<object> { player };
             object body = R.Call(player, "GetPart", "Body") ?? R.Get(player, "Body");
@@ -833,7 +819,7 @@ namespace QudHUD
 
         // Parts, mutations and effects all live in their own collections; a scanner or an
         // affliction could be any of the three.
-        static List<object> PartsOf(object o)
+        public static List<object> PartsOf(object o)
         {
             var list = new List<object>();
             string[] holders = { "PartsList", "Effects", "_Effects" };
@@ -858,55 +844,124 @@ namespace QudHUD
             return list;
         }
 
-        static void Say(string line)
-        {
-            try { UnityEngine.Debug.Log("[QudHUD] " + line); } catch { }
-        }
+    }
 
-        // Opt-in dump of everything the mod can see, so the real part names can be read off a log
-        // instead of guessed at. Enabled by creating debug.txt next to hud.html.
-        static DateTime lastDump = DateTime.MinValue;
-        static void Diagnostic(GameObject player)
+    // Writes Documents/QudHUD/diagnostic.txt: what the mod can see of the character, and the names
+    // in the game's own code that look like they already compute what the player perceives. The
+    // game publishes no API, so those names have to be read off a real install rather than guessed.
+    // Nothing listed here is ever invoked: this only reads names, so it cannot touch a save.
+    static class Diagnostics
+    {
+        static string apiCache;
+        static DateTime last = DateTime.MinValue;
+
+        public static void Write(GameObject player, bool force)
         {
-            if (!Hud.Debugging) return;
+            if (player == null) return;
             DateTime now = DateTime.UtcNow;
-            if ((now - lastDump).TotalSeconds < 30) return;
-            lastDump = now;
-
-            Say("---- diagnostic ----");
-            foreach (object src in Sources(player))
+            if (!force && (now - last).TotalSeconds < 30) return;
+            last = now;
+            try
             {
-                var names = new List<string>();
-                foreach (object p in PartsOf(src)) names.Add(p.GetType().Name);
-                if (names.Count == 0) continue;
-                string label = ReferenceEquals(src, player) ? "you" : R.Strip(Snapshot.Name(src));
-                Say("  " + label + ": " + string.Join(", ", names.ToArray()));
-
+                var sb = new StringBuilder();
+                sb.Append("Qud HUD ").Append(Hud.Version).Append(" diagnostic, written ")
+                  .AppendLine(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture));
+                sb.AppendLine("Rewritten every 30 seconds of play. Nothing listed below is ever called.");
+                sb.AppendLine();
+                Seen(sb, player);
+                sb.AppendLine();
+                if (apiCache == null) apiCache = Api();
+                sb.Append(apiCache);
+                File.WriteAllText(Path.Combine(Hud.Dir, "diagnostic.txt"), sb.ToString(), new UTF8Encoding(false));
             }
-            foreach (string t in ApiCandidates()) Say("  api: " + t);
-            Say("---- end diagnostic ----");
+            catch (Exception ex) { Hud.Log("diagnostic", ex); }
         }
 
-        // Names in the game's own code that look like they govern scanning or health readouts.
-        static List<string> ApiCandidates()
+        // The character, their equipment and their implants, with the real part names on each and
+        // whether the mod currently reads that part as switched on.
+        static void Seen(StringBuilder sb, GameObject player)
         {
-            var hits = new List<string>();
-            string[] words = { "Indexer", "Bioscan", "Techscan", "HealthLevel", "NervePoppy" };
+            sb.AppendLine("== what the mod can see ==");
+            foreach (object src in Perception.Sources(player))
+            {
+                List<object> parts = Perception.PartsOf(src);
+                if (parts.Count == 0) continue;
+                string label = ReferenceEquals(src, player) ? "you" : R.Strip(Snapshot.Name(src));
+                sb.Append("  ").AppendLine(label);
+                foreach (object part in parts)
+                    sb.Append("      ").Append(part.GetType().Name)
+                      .AppendLine(Perception.Live(part) ? "   [on]" : "   [off]");
+            }
+        }
+
+        static bool Interesting(string name)
+        {
+            string[] words = { "Health", "Hitpoint", "Look", "Tooltip", "Describe", "Description",
+                               "Scan", "Indexer", "Poppy", "Wound", "Perceiv", "Reveal", "Identif" };
+            foreach (string w in words)
+                if (name.IndexOf(w, StringComparison.OrdinalIgnoreCase) >= 0) return true;
+            return false;
+        }
+
+        static string Sig(MethodInfo mi)
+        {
+            var sb = new StringBuilder();
+            sb.Append(mi.DeclaringType.FullName).Append('.').Append(mi.Name).Append('(');
+            ParameterInfo[] ps = mi.GetParameters();
+            for (int i = 0; i < ps.Length; i++)
+            {
+                if (i > 0) sb.Append(", ");
+                sb.Append(ps[i].ParameterType.Name);
+            }
+            return sb.Append(") -> ").Append(mi.ReturnType.Name).ToString();
+        }
+
+        static string Api()
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine("== game code that may already compute this (names only, never called) ==");
+            var types = new List<string>();
+            var methods = new List<string>();
+            const BindingFlags all = BindingFlags.Public | BindingFlags.NonPublic
+                                   | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
+
             foreach (Assembly asm in AppDomain.CurrentDomain.GetAssemblies())
             {
                 if (asm.FullName.IndexOf("Assembly-CSharp", StringComparison.OrdinalIgnoreCase) < 0) continue;
-                Type[] all;
-                try { all = asm.GetTypes(); }
-                catch (ReflectionTypeLoadException ex) { all = ex.Types; }
+                Type[] found;
+                try { found = asm.GetTypes(); }
+                catch (ReflectionTypeLoadException ex) { found = ex.Types; }
                 catch { continue; }
-                foreach (Type t in all)
+
+                foreach (Type t in found)
                 {
-                    if (t == null || !Matches(t.Name, words)) continue;
-                    hits.Add(t.FullName);
-                    if (hits.Count >= 40) return hits;
+                    if (t == null) continue;
+                    if (Interesting(t.Name) && types.Count < 200) types.Add(t.FullName);
+
+                    MethodInfo[] ms;
+                    try { ms = t.GetMethods(all); }
+                    catch { continue; }
+                    foreach (MethodInfo mi in ms)
+                    {
+                        if (methods.Count >= 400) break;
+                        if (mi.IsGenericMethodDefinition || !Interesting(mi.Name)) continue;
+                        // Something that reports what the player sees returns text, a yes/no or a level.
+                        Type r = mi.ReturnType;
+                        if (r != typeof(string) && r != typeof(bool) && r != typeof(int)) continue;
+                        if (mi.GetParameters().Length > 3) continue;
+                        methods.Add(Sig(mi));
+                    }
                 }
             }
-            return hits;
+
+            types.Sort();
+            methods.Sort();
+            sb.Append("-- types (").Append(types.Count).AppendLine(") --");
+            foreach (string t in types) sb.Append("  ").AppendLine(t);
+            sb.AppendLine();
+            sb.Append("-- methods (").Append(methods.Count).AppendLine(") --");
+            foreach (string m in methods) sb.Append("  ").AppendLine(m);
+            return sb.ToString();
         }
     }
 
