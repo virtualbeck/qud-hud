@@ -7,7 +7,7 @@
 <style>
 :root{
   --void:#041615; --panel:#072120; --frame:#155352; --frame-hi:#40a4b9;
-  --text:#b1c9c3; --dim:#5d837d; --gold:#cfc041; --white:#dde8e4;
+  --text:#b1c9c3; --dim:#5d837d; --gold:#cfc041; --white:#d0ddd8;
   --crit:#d74200; --warn:#e99f10; --good:#00c420; --info:#77bfcf;
   --scale:1;
   font-size:calc(16px * var(--scale));
@@ -223,9 +223,9 @@ body.dragging #marker{display:block}
 (function(){
 'use strict';
 var PAL={k:'#0f3b3a',K:'#155352',r:'#a64a2e',R:'#d74200',g:'#009403',G:'#00c420',b:'#0048bd',B:'#0096ff',
-  c:'#40a4b9',C:'#77bfcf',m:'#b154cf',M:'#da5bd6',w:'#98875f',W:'#cfc041',y:'#b1c9c3',Y:'#dde8e4',o:'#f15f22',O:'#e99f10'};
-// Y is the game's bright white. It is rendered a little softer here than in game, because markup
-// emits an inline colour that wins over the stylesheet, and pure white on this background glares.
+  c:'#40a4b9',C:'#77bfcf',m:'#b154cf',M:'#da5bd6',w:'#98875f',W:'#cfc041',y:'#b1c9c3',Y:'#d0ddd8',o:'#f15f22',O:'#e99f10'};
+// Y is the game's bright white, kept in step with the --white token above: markup emits an
+// inline colour that wins over the stylesheet, so both routes have to carry the same tone.
 var SHADERS={fiery:'#d74200',icy:'#77bfcf',freezing:'#77bfcf',poisonous:'#00c420',rainbow:'#da5bd6',
   hologram:'#0096ff',psionic:'#b154cf',metamorphic:'#da5bd6',sparking:'#cfc041',zetachrome:'#da5bd6',
   crysteel:'#77bfcf',shade:'#155352',rules:'#77bfcf',paisley:'#da5bd6',chaotic:'#da5bd6',glotrot:'#a64a2e'};
