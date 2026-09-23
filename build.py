@@ -105,9 +105,16 @@ def changelog_bullets():
 
 
 def changenote(version):
-    """A one-line changenote: KeyValues cannot hold a newline, so the bullets become sentences."""
-    parts = [b if b[-1] in ".!?" else b + "." for b in changelog_bullets() if b]
-    return f"v{version}" + (": " + " ".join(parts) if parts else "")
+    """A one-line changenote, since a KeyValues value cannot contain a newline.
+
+    Steam renders BBCode in Workshop text and [list] is block level, so the entries still come out
+    on separate lines despite the whole thing being one line in the file. If a Steam page ever
+    shows the tags literally, the entries are still readable: [*] separates them.
+    """
+    items = [b if b[-1] in ".!?" else b + "." for b in changelog_bullets() if b]
+    if not items:
+        return f"v{version}"
+    return f"v{version}[list]" + "".join(f"[*]{b}" for b in items) + "[/list]"
 
 
 def vdf_value(s):
