@@ -18,9 +18,9 @@ The page updates right before each of your turns, after everything else has acte
 - **Options** in the footer: low fresh water warning and threshold, which panels are shown, and the installed version.
 
 The dot at the bottom left tells you whether what you're looking at is current:
-- **Green** — live.
-- **Amber** — nothing has been written for a couple of minutes. The game is closed, or you have been idle. The readings fade at the same time, so stale numbers don't read as live ones.
-- **Red** — the data file can't be read at all.
+- **Green**: live.
+- **Amber**: nothing has been written for a couple of minutes. The game is closed, or you have been idle. The readings fade at the same time, so stale numbers don't read as live ones.
+- **Red**: the data file can't be read at all.
 
 ## Notes
 - The page reads a local file; no server or internet connection is needed.
@@ -28,4 +28,4 @@ The dot at the bottom left tells you whether what you're looking at is current:
 - If a section stays empty after a game update, check `Player.log` for lines starting with `[QudHUD]`. If a panel stops drawing entirely, the footer names it and the browser console has the error.
 
 ## Bugs and suggestions
-Please open an issue at https://github.com/virtualbeck/qud-hud/issues — include the version shown in **Options**, your game version, and any `[QudHUD]` lines from `Player.log`.
+Please open an issue at https://github.com/virtualbeck/qud-hud/issues. Include the version shown in **Options**, your game version, and any `[QudHUD]` lines from `Player.log`.
