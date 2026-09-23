@@ -438,11 +438,10 @@ function renderFoes(d){
   var f=d.hostiles;
   if(f===null||f===undefined){$('foes').innerHTML=empty('Hostile tracking unavailable in this game version.');return;}
   if(!f.length){$('foes').innerHTML=empty('No hostiles in sight.');return;}
-  // They arrive nearest first, already broken by danger and then by hit points. Sorting that by
-  // danger alone is stable, so both of those tiebreaks survive underneath it, and the page never
-  // needs the hit points it may not be allowed to know.
+  // They arrive nearest first. The mod works out the dangerous order too and sends each creature
+  // its position in it, so switching never needs the hit points behind that ordering.
   var list=foeSort==='danger'
-    ? f.slice().sort(function(a,b){return (b.danger||0)-(a.danger||0);})
+    ? f.slice().sort(function(a,b){return (a.dangerRank||0)-(b.dangerRank||0);})
     : f;
   var byDanger=foeSort==='danger';
   var head='<div class="foesort"><button type="button" class="sortbtn" data-mode="'+

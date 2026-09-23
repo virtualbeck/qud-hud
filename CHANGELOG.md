@@ -1,7 +1,7 @@
 # Changelog
 
 ## 1.0.7
-- Added: Hostiles in sight has a Sort toggle, switching between nearest first and most dangerous first. Your choice is remembered. Either way, creatures tied on the sort still fall back to nearest, then to whichever has the most hit points left.
+- Added: Hostiles in sight has a Sort toggle, switching between nearest first and most dangerous first. Your choice is remembered. Sorting by danger weighs the game's difficulty rating first, then how big the creature is, then how close it is, since a high level character reads almost everything as Trivial and the rating alone stops telling you much.
 - Added: unspent point reminders in Pressing matters can be dismissed with the × beside them. A dismissal lasts until the number changes, so spending them clears it and earning more brings the reminder back. The totals stay in Survival either way.
 - Changed: hostiles at the same distance are now ordered by how dangerous they are, and hostiles tied on both by which has the most hit points left.
 - Added: Hostiles in sight now lists what is wrong with each creature, bleeding and the like, in the same style and colours as your own Effects panel. The game's own rule for what shows when you look at a creature decides the list, so nothing appears that you could not see by looking.
