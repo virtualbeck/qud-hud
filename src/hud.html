@@ -57,6 +57,10 @@ body{
 #warn li.s1 .g{color:var(--frame-hi)}
 #warn .ok{color:var(--good)}
 #warn .quip{color:var(--dim);margin-top:.15rem}
+#warn .drop{font:inherit;font-size:.9em;background:none;border:0;cursor:pointer;color:var(--dim);
+  padding:0 .3rem;margin-left:.35rem;line-height:1}
+#warn .drop:hover,#warn .drop:focus-visible{color:var(--gold)}
+#warn .drop:focus-visible{outline:1px solid var(--gold);outline-offset:1px}
 @keyframes throb{50%{border-color:#5a1a00}}
 
 /* columns */
@@ -307,8 +311,28 @@ function localAlerts(d){
   }
   return out;
 }
+// Reminders the mod marks as dismissable can be silenced from Pressing matters. A dismissal is
+// remembered against the exact wording, so spending the points clears it and gaining more brings
+// the reminder back rather than leaving it silenced forever.
+var DISMISS_KEY='qudhud.dismissed',dismissed={};
+try{(JSON.parse(localStorage.getItem(DISMISS_KEY))||[]).forEach(function(t){dismissed[t]=1;});}catch(e){}
+function saveDismissed(){
+  var out=[],k;
+  for(k in dismissed)out.push(k);
+  try{localStorage.setItem(DISMISS_KEY,JSON.stringify(out));}catch(e){}
+}
 function allAlerts(d){
-  return (d.alerts||[]).concat(localAlerts(d)).sort(function(a,b){return b.sev-a.sev;});
+  var all=(d.alerts||[]).concat(localAlerts(d));
+  var live={},stale=false,k;
+  all.forEach(function(a){if(a.dis)live[a.text]=1;});
+  for(k in dismissed)if(!live[k]){delete dismissed[k];stale=true;}
+  if(stale)saveDismissed();
+  return all.filter(function(a){return !(a.dis&&dismissed[a.text]);})
+            .sort(function(a,b){return b.sev-a.sev;});
+}
+function dismiss(text){
+  dismissed[text]=1;saveDismissed();
+  if(lastPayload)render(lastPayload);
 }
 var QUIPS=[
   'Live and drink, wanderer.',
@@ -363,7 +387,10 @@ function renderWarn(d){
   }
   quietLast=null;
   $('warnBody').innerHTML='<ul>'+a.map(function(x){
-    return '<li class="s'+x.sev+'"><span class="g">'+glyph[x.sev]+'</span>'+esc(x.text)+'</li>';
+    return '<li class="s'+x.sev+'"><span class="g">'+glyph[x.sev]+'</span>'+esc(x.text)+
+      (x.dis?'<button type="button" class="drop" data-text="'+esc(x.text)+
+             '" title="Dismiss until this changes" aria-label="Dismiss: '+esc(x.text)+'">×</button>':'')+
+      '</li>';
   }).join('')+'</ul>';
 }
 
@@ -769,6 +796,12 @@ document.addEventListener('pointerdown',function(e){
 });
 syncOpts();
 $('ver').textContent=PAGE_VERSION;
+
+// Delegated, because Pressing matters is rewritten on every update.
+$('warnBody').addEventListener('click',function(e){
+  var t=e.target;
+  if(t&&t.classList&&t.classList.contains('drop'))dismiss(t.getAttribute('data-text'));
+});
 
 window.__qudhud={qud:qud,render:render};
 

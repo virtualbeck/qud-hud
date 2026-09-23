@@ -244,9 +244,13 @@ namespace QudHUD
             try { a(); } catch (Exception ex) { Hud.Log("section " + name, ex); }
         }
 
-        static void Alert(List<Dictionary<string, object>> alerts, int sev, string text)
+        // dismissable marks a reminder the page may let the player silence, for things that are
+        // not going anywhere and are shown elsewhere on the display anyway.
+        static void Alert(List<Dictionary<string, object>> alerts, int sev, string text, bool dismissable = false)
         {
-            alerts.Add(new Dictionary<string, object> { { "sev", sev }, { "text", text } });
+            var a = new Dictionary<string, object> { { "sev", sev }, { "text", text } };
+            if (dismissable) a["dis"] = true;
+            alerts.Add(a);
         }
 
         // Stats
@@ -422,9 +426,9 @@ namespace QudHUD
             d["survival"] = s;
 
             int ap = SV(p, "AP"), sp = SV(p, "SP"), mp = SV(p, "MP");
-            if (ap > 0) Alert(alerts, 1, ap + " unspent attribute point" + (ap == 1 ? "" : "s"));
-            if (mp > 0) Alert(alerts, 1, mp + " unspent mutation point" + (mp == 1 ? "" : "s"));
-            if (sp >= 50) Alert(alerts, 1, sp + " unspent skill points");
+            if (ap > 0) Alert(alerts, 1, ap + " unspent attribute point" + (ap == 1 ? "" : "s"), true);
+            if (mp > 0) Alert(alerts, 1, mp + " unspent mutation point" + (mp == 1 ? "" : "s"), true);
+            if (sp >= 50) Alert(alerts, 1, sp + " unspent skill points", true);
         }
 
         static void EnsureEffectTypes()
@@ -603,6 +607,24 @@ namespace QudHUD
             d["gear"] = new Dictionary<string, object> { { "missing", missing }, { "issues", issues }, { "cells", cells } };
         }
 
+        // Rank for ordering only, never shown. Deliberately our own ladder rather than the game's
+        // GetDifficultyFromDescription: that returns a number whose direction we cannot check from
+        // here, and guessing it wrong would silently sort the list backwards. Wording the ladder
+        // does not know simply ranks 0, which drops the tiebreak rather than misordering it.
+        static int DangerRank(string rating)
+        {
+            switch (R.Strip(rating).Trim().ToLowerInvariant())
+            {
+                case "impossible": return 6;
+                case "very tough": return 5;
+                case "tough": return 4;
+                case "average": return 3;
+                case "easy": return 2;
+                case "trivial": return 1;
+                default: return 0;
+            }
+        }
+
         static string Rating(object o, GameObject p)
         {
             try { return Difficulty.Describe(o, p); }
@@ -685,16 +707,32 @@ namespace QudHUD
                 }
                 if (fx.Count > 0) entry["effects"] = fx;
 
+                // Sort keys, stripped before the list is sent: hit points order the list even when
+                // the player may not read them, so they must not travel to the page.
+                entry["_danger"] = DangerRank((string)entry["rating"]);
+                entry["_hp"] = hp;
                 found.Add(entry);
             }
-            found.Sort((a, b) => ((int)a["distance"]).CompareTo((int)b["distance"]));
+            // Nearest first, then the more dangerous of equals, then whichever still has more left
+            // in it.
+            found.Sort((a, b) =>
+            {
+                int c = ((int)a["distance"]).CompareTo((int)b["distance"]);
+                if (c != 0) return c;
+                c = ((int)b["_danger"]).CompareTo((int)a["_danger"]);
+                if (c != 0) return c;
+                return ((int)b["_hp"]).CompareTo((int)a["_hp"]);
+            });
 
             var list = new List<object>();
             int adjacent = 0;
             for (int i = 0; i < found.Count; i++)
             {
                 if ((int)found[i]["distance"] <= 1) adjacent++;
-                if (i < 15) list.Add(found[i]);
+                if (i >= 15) continue;
+                found[i].Remove("_danger");
+                found[i].Remove("_hp");
+                list.Add(found[i]);
             }
             d["hostiles"] = list;
 

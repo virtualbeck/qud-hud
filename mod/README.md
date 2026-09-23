@@ -16,6 +16,7 @@ The page updates right before each of your turns, after everything else has acte
 - `×` hides a panel you don't want. **Options** lists them all and brings them back.
 - `+` and `-` resize, `0` resets size. `R` restores the default layout and unhides everything.
 - **Options** in the footer: low fresh water warning and threshold, which panels are shown, and the installed version.
+- Unspent point reminders in **Pressing matters** have an × to dismiss them. They come back if the number changes, and the totals are always in **Survival**.
 
 The dot at the bottom left tells you whether what you're looking at is current:
 - **Green**: live.
