@@ -87,6 +87,10 @@ body{
 
 .foe .hp{height:.4rem;margin-top:.15rem}
 .foe .hpw{font-size:.88rem;margin-top:.05rem}
+.foe .hpline{display:flex;align-items:center;gap:.5rem;margin-top:.15rem}
+.foe .hpline .hpnum{font-size:.88rem;white-space:nowrap;font-variant-numeric:tabular-nums}
+.foe .hpline .hp{flex:1;margin-top:0}
+.foe .foefx{font-size:.85rem;margin-top:.1rem;display:flex;flex-wrap:wrap;gap:0 .8rem}
 .foe.adj .dist{color:var(--crit)}
 .ab.cool{color:var(--dim)}
 .ab .r{color:var(--good)}
@@ -398,14 +402,21 @@ function renderFoes(d){
   if(!f.length){$('foes').innerHTML=empty('No hostiles in sight.');return;}
   $('foes').innerHTML=f.map(function(x){
     var dir=DIR_GLYPH[x.dir]||'',hp;
-    // Exact hit points only arrive when the player carries a scanner that reads them, so a bar is
-    // only ever drawn from real numbers. Otherwise the game's own health word stands in for it.
-    if(x.exact&&x.hpMax>0)hp=bar(x.hp,x.hpMax,pctColor(x.hp/x.hpMax),'hp');
-    else hp=x.health?'<div class="hpw">'+qud(x.health)+'</div>':'';
+    // Exact hit points only arrive when the player can read them, so a bar is only ever drawn from
+    // real numbers. Otherwise the game's own health word stands in for it.
+    if(x.exact&&x.hpMax>0){
+      var col=pctColor(x.hp/x.hpMax);
+      hp='<div class="hpline"><span class="hpnum" style="color:'+col+'">'+x.hp+'/'+x.hpMax+'</span>'+
+         bar(x.hp,x.hpMax,col,'hp')+'</div>';
+    }else hp=x.health?'<div class="hpw">'+qud(x.health)+'</div>':'';
+    var fx=(x.effects||[]).map(function(e){
+      return '<span class="fx '+(e.disease?'dis':e.negative?'bad':'good')+'">'+
+             '<span class="nm">'+qud(e.name)+'</span></span>';
+    }).join('');
     return '<div class="item foe'+(x.distance<=1?' adj':'')+'">'+
       row(qud(x.name)+' <span class="dim">L'+num(x.level)+'</span>'+(x.rating?' '+qud(x.rating):''),
           '<span class="dist">'+(x.distance<=1?'adjacent':x.distance+' away')+(dir?' '+dir:'')+'</span>')+
-      hp+'</div>';
+      hp+(fx?'<div class="foefx">'+fx+'</div>':'')+'</div>';
   }).join('');
 }
 

@@ -667,6 +667,24 @@ namespace QudHUD
                 // leak them back through a proportional bar.
                 if (exact) { entry["hp"] = hp; entry["hpMax"] = hpMax; }
                 else entry["health"] = Health.Describe(o, hp, hpMax);
+
+                // What is wrong with it, filtered by the game's own rule for what shows when you
+                // look at a creature rather than by listing everything it happens to be carrying.
+                var fx = new List<object>();
+                foreach (object e in EffectsOf(o))
+                {
+                    if (R.Bool(R.Call(e, "SuppressInLookDisplay"))) continue;
+                    Dictionary<string, object> described = DescribeEffect(e);
+                    if (described == null) continue;
+                    fx.Add(new Dictionary<string, object> {
+                        { "name", described["name"] },
+                        { "negative", described["negative"] },
+                        { "disease", described["disease"] }
+                    });
+                    if (fx.Count >= 6) break;
+                }
+                if (fx.Count > 0) entry["effects"] = fx;
+
                 found.Add(entry);
             }
             found.Sort((a, b) => ((int)a["distance"]).CompareTo((int)b["distance"]));

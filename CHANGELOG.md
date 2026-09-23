@@ -1,6 +1,8 @@
 # Changelog
 
 ## 1.0.7
+- Added: Hostiles in sight now lists what is wrong with each creature, bleeding and the like, in the same style and colours as your own Effects panel. The game's own rule for what shows when you look at a creature decides the list, so nothing appears that you could not see by looking.
+- Changed: when you can read a creature's exact hit points, the figures are now shown next to the bar rather than the bar alone.
 - Changed: Hostiles in sight now shows a creature's health as the game does, using the game's own wound level and colour, and only draws an exact hit point bar when your character can actually read those numbers. Whether they can is decided by the game rather than by this mod, so VISAGE once it has booted, the optical scanner implants and anything a mod adds all count, and a scanner that is switched off does not. Without one, the numbers are not sent to the page at all.
 
 ## 1.0.6
