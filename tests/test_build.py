@@ -483,6 +483,15 @@ class CSharp(Temp):
                      if "// probe:" in l and "probe: type" not in l])
         self.assertIn(f"{total - 3} of {total}", report)
 
+    def test_api_probe_that_cannot_compile_reports_nothing_known(self):
+        # with no references at all nothing compiles, and the errors land on unlabelled lines too; the
+        # probe must say it learned nothing rather than that every guess holds
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            b.probe(self.compiler, [])
+        self.assertIn("nothing is known", output.getvalue())
+        self.assertNotIn("guesses hold", output.getvalue())
+
     def test_an_error_is_reported_at_its_template_line(self):
         needle = "Perception.SelfExact(p)"
         template = (REPO / "src/QudHUD.template.cs").read_text(encoding="utf-8").splitlines()

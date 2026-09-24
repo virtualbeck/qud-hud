@@ -347,8 +347,17 @@ def probe(compiler, references):
     out.parent.mkdir(parents=True, exist_ok=True)
     if out.exists():
         out.unlink()
-    _, output = compile_cs(compiler, src, references, out)
-    held, total, missing, unchecked, broken = probe_report(output, src.read_text(encoding="utf-8").splitlines())
+    ok, output = compile_cs(compiler, src, references, out)
+    lines = src.read_text(encoding="utf-8").splitlines()
+    held, total, missing, unchecked, broken = probe_report(output, lines)
+    # Only failures on labelled lines say anything about a guess. A failure anywhere else means the
+    # probe did not compile for some other reason, and "everything holds" would then be a lie.
+    labelled = {n for n, l in enumerate(lines, 1) if "// probe:" in l}
+    failed = {int(n) for n in re.findall(r"GameApi\.cs\((\d+),\d+\): error", output)}
+    if not ok and (not failed or failed - labelled):
+        print("  game API: the probe did not compile for a reason unrelated to the game, so nothing is known:")
+        print("    " + "\n    ".join(output.strip().splitlines()[:5]))
+        return
     print(f"  game API: {held} of {total} of the mod's guesses hold against this build")
     if missing:
         print("    not found: " + ", ".join(missing))
