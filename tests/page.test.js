@@ -340,6 +340,42 @@ async function load(opts={}){
     delete DATA.companions;
   }
 
+  // --- the message log: newest last, coloured by the game's markup, and never read as HTML
+  {
+    DATA.messages=['You hit the snapjaw.','{{R|The snapjaw bites you!}}',
+                   'A name like <img src=x onerror="window.__pwned=1"> stays text.','You feel hungry.'];
+    writeData(0,1);
+    ({dom,errs,d}=await load());
+    const box=d.getElementById('msgs'),rows=box.querySelectorAll('.msg');
+    check('messages: panel is on the page',!!d.querySelector('[data-panel=msgs]'));
+    check('messages: every line shown',rows.length===4,rows.length+' lines');
+    check('messages: in order, newest last',
+          rows[0].textContent==='You hit the snapjaw.'&&rows[3].textContent==='You feel hungry.');
+    check('messages: only the newest is marked latest',
+          rows[3].classList.contains('latest')&&box.querySelectorAll('.latest').length===1);
+    check('messages: game colours are rendered',/<span style="color:/.test(rows[1].innerHTML));
+    check('messages: no raw markup leaks',!/\{\{/.test(box.textContent));
+    check('messages: HTML in a message is shown as text',
+          box.querySelectorAll('img').length===0&&/<img src=x/.test(rows[2].textContent));
+    check('messages: nothing in a message runs',dom.window.__pwned===undefined);
+    check('messages: listed in Options',!!d.querySelector('[data-panel-tog=msgs]'));
+    check('messages: no errors',errs.length===0,errs.join(' | '));
+    dom.window.close();
+
+    DATA.messages=[];
+    writeData(0,2);
+    ({dom,errs,d}=await load());
+    check('messages: none yet says so',/No messages yet/.test(d.getElementById('msgs').textContent));
+    dom.window.close();
+
+    DATA.messages=null;
+    writeData(0,3);
+    ({dom,errs,d}=await load());
+    check('messages: unavailable says so',/unavailable/.test(d.getElementById('msgs').textContent));
+    dom.window.close();
+    delete DATA.messages;
+  }
+
   // --- dismissable reminders in Pressing matters
   DATA.alerts=[{sev:3,text:'1 hostile adjacent to you'},
                {sev:1,text:'160 unspent skill points',dis:true},

@@ -396,6 +396,26 @@ class CSharp(Temp):
                                   sorted(self.managed.glob("*.dll")), self.tmp / "v5.dll", extra)
         self.assertTrue(ok, output)
 
+    def test_message_log_reader(self):
+        # actually runs the reader against stand-in message queues, rather than only compiling it
+        dotnet = self.kind == "dotnet"
+        exe = self.tmp / ("harness.dll" if dotnet else "harness.exe")
+        ok, output = b.compile_cs(
+            self.compiler,
+            [REPO / "tests/stubs/Game.cs", b.DIST / "QudHUD/QudHUD.cs", REPO / "tests/stubs/MessageLogHarness.cs"],
+            self.refs, exe, ["-langversion:5"] if dotnet else [], target="exe")
+        self.assertTrue(ok, output)
+        if dotnet:
+            tfm = self.refs[0].parent.name  # e.g. net8.0
+            (self.tmp / "harness.runtimeconfig.json").write_text(json.dumps({"runtimeOptions": {
+                "tfm": tfm, "framework": {"name": "Microsoft.NETCore.App", "version": tfm[3:] + ".0"}}}))
+            run = [self.compiler[0], "exec", str(exe)]
+        else:
+            run = [str(exe)]
+        r = subprocess.run(run, capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("all green", r.stdout)
+
     def test_an_error_is_reported_at_its_template_line(self):
         needle = "Perception.SelfExact(p)"
         template = (REPO / "src/QudHUD.template.cs").read_text(encoding="utf-8").splitlines()

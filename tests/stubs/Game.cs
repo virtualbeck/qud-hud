@@ -9,7 +9,8 @@ namespace XRL
     using System;
     using XRL.World;
 
-    public static class The
+    // partial so a test harness can add what it needs for the mod to find by reflection
+    public static partial class The
     {
         public static GameObject Player { get; set; }
     }

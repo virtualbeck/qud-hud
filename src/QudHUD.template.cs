@@ -232,6 +232,7 @@ namespace QudHUD
             Section("gear", () => BuildGear(p, d, alerts));
             Section("hostiles", () => BuildHostiles(p, d, alerts));
             Section("companions", () => BuildCompanions(p, d));
+            Section("messages", () => d["messages"] = MessageLog.Recent(12));
 
             alerts.Sort((a, b) => ((int)b["sev"]).CompareTo((int)a["sev"]));
             var list = new List<object>();
@@ -956,6 +957,94 @@ namespace QudHUD
                 if (scanning == null) UnityEngine.Debug.LogWarning("[QudHUD] no Scanning capability found; hostiles will show health words only.");
             }
             return R.Bool(R.SCallT(scanning, "HasScanningFor", player, target));
+        }
+    }
+
+    // The game's message log. There is no published way to read it, so the first call looks for it by
+    // reflection on the game's message queue: a list of strings called Messages if there is one,
+    // otherwise the longest list of strings it holds. Which member it settled on goes to Player.log
+    // once, so a wrong guess is easy to spot. Finding none leaves the panel saying so.
+    static class MessageLog
+    {
+        static bool searched, searchedInstance;
+        static MemberInfo member;
+        static bool isStatic;
+        const BindingFlags Any = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static;
+
+        public static List<object> Recent(int count)
+        {
+            object queue = R.Get(R.Get(R.SGet("XRL.The", "Game"), "Player"), "Messages");
+            // search again once a queue exists, if the first look came before the game made one
+            if (!searched || (member == null && queue != null && !searchedInstance)) Find(queue);
+            if (member == null || (!isStatic && queue == null)) return null;
+            IList log = Read(member, isStatic ? null : queue) as IList;
+            if (log == null) return null;
+
+            // newest last, as the game shows them; one entry can hold several lines
+            var lines = new List<object>();
+            for (int i = log.Count - 1; i >= 0 && lines.Count < count; i--)
+            {
+                string entry = log[i] as string;
+                if (string.IsNullOrEmpty(entry)) continue;
+                string[] parts = entry.Split('\n');
+                for (int j = parts.Length - 1; j >= 0 && lines.Count < count; j--)
+                    if (R.Strip(parts[j]).Trim().Length > 0) lines.Add(parts[j].TrimEnd('\r'));
+            }
+            lines.Reverse();
+            return lines;
+        }
+
+        static void Find(object queue)
+        {
+            searched = true;
+            searchedInstance = queue != null;
+            Type t = queue != null ? queue.GetType() : R.FindType("XRL.Messages.MessageQueue");
+            if (t == null) { Say("message log: no message queue found"); return; }
+            int best = -1;
+            foreach (MemberInfo m in t.GetMembers(Any))
+            {
+                FieldInfo f = m as FieldInfo;
+                PropertyInfo p = m as PropertyInfo;
+                if (f == null && (p == null || !p.CanRead || p.GetIndexParameters().Length > 0)) continue;
+                bool st = f != null ? f.IsStatic : p.GetGetMethod(true).IsStatic;
+                if (!st && queue == null) continue;
+                IList list;
+                try { list = Read(m, st ? null : queue) as IList; }
+                catch { continue; }
+                if (list == null || !OfStrings(list)) continue;
+                int score = list.Count + (m.Name == "Messages" ? 1000000 : 0);
+                if (score <= best) continue;
+                best = score;
+                member = m;
+                isStatic = st;
+            }
+            Say(member == null ? "message log: nothing readable on " + t.FullName
+                               : "message log: reading " + t.FullName + "." + member.Name);
+        }
+
+        static bool OfStrings(IList list)
+        {
+            Type lt = list.GetType();
+            if (lt.IsArray) return lt.GetElementType() == typeof(string);
+            if (lt.IsGenericType)
+            {
+                Type[] args = lt.GetGenericArguments();
+                return args.Length == 1 && args[0] == typeof(string);
+            }
+            return list.Count > 0 && list[0] is string;
+        }
+
+        static object Read(MemberInfo m, object target)
+        {
+            FieldInfo f = m as FieldInfo;
+            if (f != null) return f.GetValue(target);
+            PropertyInfo p = m as PropertyInfo;
+            return p == null ? null : p.GetValue(target, null);
+        }
+
+        static void Say(string line)
+        {
+            try { UnityEngine.Debug.Log("[QudHUD] " + line); } catch { }
         }
     }
 

@@ -283,11 +283,13 @@ def find_managed():
     return None
 
 
-def compile_cs(compiler, source, references, out, extra=()):
-    """Compile one file to a library against exactly these references. Returns (ok, output)."""
+def compile_cs(compiler, sources, references, out, extra=(), target="library"):
+    """Compile against exactly these references. Returns (ok, output)."""
+    if isinstance(sources, (str, Path)):
+        sources = [sources]
     rsp = out.with_suffix(".rsp")
-    args = ["-nostdlib", "-t:library", f'-out:"{out}"', *extra]
-    args += [f'-r:"{r}"' for r in references] + [f'"{source}"']
+    args = ["-nostdlib", f"-t:{target}", f'-out:"{out}"', *extra]
+    args += [f'-r:"{r}"' for r in references] + [f'"{s}"' for s in sources]
     rsp.write_text("\n".join(args), encoding="utf-8")
     # -noconfig is ignored inside a response file, so it goes on the command line. The references go
     # in the file because the game ships enough DLLs to overflow a Windows command line.

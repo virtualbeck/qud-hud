@@ -36,6 +36,7 @@ Full instructions are in [mod/README.md](mod/README.md), which ships with the mo
 - `+` / `-` resize, `0` resets, `R` restores the default layout and unhides every panel.
 - **Hostiles in sight** has a Sort toggle: nearest first, or most dangerous first.
 - **Companions** shows your followers, by the same rules as hostiles.
+- **Messages** keeps the last dozen lines of the game's message log in view.
 - Unspent point reminders in **Pressing matters** can be dismissed with the `×` beside them, until
   the number changes.
 - **Options** can also hide abilities that are simply ready.
@@ -60,7 +61,13 @@ Requires Python 3.8+. No other dependencies.
 python build.py              # dist/QudHUD and dist/QudHUD-vX.Y.Z.zip
 python build.py --install    # also copy it into your Mods folder
 python build.py --uninstall  # remove that copy again
+python build.py --check      # compile the mod against your installed game first
 ```
+
+`--check` finds the game through Steam and compiles the built mod against the game's own DLLs,
+reporting errors by line in `src/QudHUD.template.cs`, so a mistake fails in seconds rather than when
+the game loads. On Windows it uses the .NET Framework compiler that every install already has.
+`python build.py --check --install` installs only what compiles.
 
 `src/hud.html` is the display page and can be opened directly in a browser to work on the design.
 It shows a waiting screen until a `hud_data.js` sits next to it.
@@ -80,9 +87,13 @@ npm test
 ```
 
 This runs the display page in jsdom against a synthetic `hud_data.js`, the page's periodic rebuild,
-and `build.py` and everything it produces, including the Workshop build file. The C# is not compiled
-by the tests, since that needs the game's own assemblies. It is covered only by checks that do not:
-the embedded page has to read back exactly as the compiler would see it, and the braces must balance.
+and `build.py` and everything it produces, including the Workshop build file.
+
+When a C# compiler is available (the .NET SDK, or on Windows the .NET Framework one) the tests also
+compile the mod, hold it to C# 5 so `--check` keeps working with the Windows built-in compiler, and
+run parts of it against stand-ins for the game in `tests/stubs`. Those stand-ins mirror how the mod
+uses the game rather than the game itself, so they prove the mod's own code, not that the game's API
+still matches; `--check` is what tests that. Without a compiler those tests are skipped.
 
 ## Layout
 
