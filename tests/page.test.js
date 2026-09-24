@@ -299,6 +299,47 @@ async function load(opts={}){
                     {name:'Regenerate',enabled:true,cooldown:false,cooldownTurns:0,toggleable:true,toggled:true}];
   }
 
+  // --- companions: the same condition readout as hostiles, and nothing at all when out of sight
+  {
+    DATA.companions=[
+      {name:'Mehmet',level:12,seen:true,distance:1,dir:'W',exact:false,health:'{{W|Injured}}',
+       effects:[{name:'{{r|bleeding}}',negative:true,disease:false}]},
+      {name:'turret',level:30,seen:true,distance:4,dir:'N',exact:true,hp:9,hpMax:20,hcol:'W'},
+      {name:'Warden Yrame',level:20,seen:false}];
+    writeData(0,1);
+    ({dom,errs,d}=await load());
+    const pals=d.getElementById('pals'),items=pals.querySelectorAll('.pal');
+    check('companions: panel is on the page',!!d.querySelector('[data-panel=pals]'));
+    check('companions: every companion listed',items.length===3,items.length+' listed');
+    check('companions: health word shown',/Injured/.test(items[0].textContent));
+    check('companions: their effects shown',/bleeding/.test(items[0].textContent)&&items[0].querySelectorAll('.fx.bad').length===1);
+    check('companions: an adjacent companion is not marked as a threat',
+          !pals.querySelector('.adj')&&/adjacent/.test(items[0].textContent));
+    check('companions: exact figures when scannable',/9\/20/.test(items[1].textContent)&&items[1].querySelectorAll('.bar.hp').length===1);
+    check('companions: figures use the game colour',/#cfc041/.test(items[1].querySelector('.hpnum').getAttribute('style')));
+    check('companions: out of sight says so',/out of sight/.test(items[2].textContent));
+    check('companions: out of sight shows no distance',!/away|adjacent/.test(items[2].textContent));
+    check('companions: out of sight shows no condition',
+          !items[2].querySelector('.hpline,.hpw,.foefx'));
+    check('companions: listed in Options',!!d.querySelector('[data-panel-tog=pals]'));
+    check('companions: no errors',errs.length===0,errs.join(' | '));
+    dom.window.close();
+
+    DATA.companions=[];
+    writeData(0,2);
+    ({dom,errs,d}=await load());
+    check('companions: none says so',/No companions in this zone/.test(d.getElementById('pals').textContent));
+    dom.window.close();
+
+    DATA.companions=null;
+    writeData(0,3);
+    ({dom,errs,d}=await load());
+    check('companions: unavailable says so',/unavailable/.test(d.getElementById('pals').textContent));
+    check('companions: unavailable breaks nothing else',/Tester/.test(d.getElementById('who').textContent)&&errs.length===0);
+    dom.window.close();
+    delete DATA.companions;
+  }
+
   // --- dismissable reminders in Pressing matters
   DATA.alerts=[{sev:3,text:'1 hostile adjacent to you'},
                {sev:1,text:'160 unspent skill points',dis:true},
@@ -475,10 +516,11 @@ async function load(opts={}){
   writeData(0,1);
   ({dom,errs,d}=await load());
   check('fresh data is not dimmed',!d.body.classList.contains('stale'));
-  check('every panel has a hide button',d.querySelectorAll('.hide').length===8,
-        d.querySelectorAll('.hide').length+' hide buttons');
-  check('Options lists every panel',d.querySelectorAll('[data-panel-tog]').length===8,
-        d.querySelectorAll('[data-panel-tog]').length+' toggles');
+  const panelCount=d.querySelectorAll('.panel[data-panel]').length;
+  check('every panel has a hide button',d.querySelectorAll('.hide').length===panelCount,
+        d.querySelectorAll('.hide').length+' of '+panelCount);
+  check('Options lists every panel',d.querySelectorAll('[data-panel-tog]').length===panelCount,
+        d.querySelectorAll('[data-panel-tog]').length+' of '+panelCount);
   check('water toggle untouched by panel toggles',
         d.querySelector('.tog[data-opt=waterWarn]').getAttribute('aria-checked')==='true');
   check('no panel hidden by default',d.querySelectorAll('.panel.off').length===0);
@@ -496,9 +538,13 @@ async function load(opts={}){
         JSON.parse(dom.window.localStorage.getItem('qudhud.hidden')||'[]').indexOf('gear')<0);
   dom.window.close();
 
-  // hidden panels must be restored from storage on load, and must not hold a column open
-  ({dom,errs,d}=await load({store:{'qudhud.hidden':JSON.stringify(['foes','effects','combat','abilities'])}}));
-  check('hidden panels restored from storage',d.querySelectorAll('.panel.off').length===4,
+  // hidden panels must be restored from storage on load, and must not hold a column open.
+  // Hide everything that starts in the first column, whatever that currently is.
+  ({dom,errs,d}=await load());
+  const firstCol=[].slice.call(d.querySelectorAll('[data-zone=c1] > .panel[data-panel]')).map(n=>n.dataset.panel);
+  dom.window.close();
+  ({dom,errs,d}=await load({store:{'qudhud.hidden':JSON.stringify(firstCol)}}));
+  check('hidden panels restored from storage',d.querySelectorAll('.panel.off').length===firstCol.length,
         d.querySelectorAll('.panel.off').length+' hidden');
   check('a column of only hidden panels collapses',
         d.querySelector('[data-zone=c1]').classList.contains('vacant'));

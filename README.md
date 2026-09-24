@@ -35,6 +35,7 @@ Full instructions are in [mod/README.md](mod/README.md), which ships with the mo
 - `×` hides a panel; **Options** in the footer brings it back.
 - `+` / `-` resize, `0` resets, `R` restores the default layout and unhides every panel.
 - **Hostiles in sight** has a Sort toggle: nearest first, or most dangerous first.
+- **Companions** shows your followers, by the same rules as hostiles.
 - Unspent point reminders in **Pressing matters** can be dismissed with the `×` beside them, until
   the number changes.
 - **Options** can also hide abilities that are simply ready.

@@ -92,12 +92,13 @@ body{
 .stats .dv::before{content:'\25CB\00A0';color:var(--dim);font-size:.72em;vertical-align:.1em}
 .res{display:grid;grid-template-columns:repeat(4,1fr);gap:.4rem;text-align:center;margin-top:.6rem;padding-top:.5rem;border-top:1px dashed var(--frame)}
 
-.foe .hp{height:.4rem;margin-top:.15rem}
-.foe .hpw{font-size:.88rem;margin-top:.05rem}
-.foe .hpline{display:flex;align-items:center;gap:.5rem;margin-top:.15rem}
-.foe .hpline .hpnum{font-size:.88rem;white-space:nowrap;font-variant-numeric:tabular-nums}
-.foe .hpline .hp{flex:1;margin-top:0}
-.foe .foefx{font-size:.85rem;margin-top:.1rem;display:flex;flex-wrap:wrap;gap:0 .8rem}
+.creature .hp{height:.4rem;margin-top:.15rem}
+.creature .hpw{font-size:.88rem;margin-top:.05rem}
+.creature .hpline{display:flex;align-items:center;gap:.5rem;margin-top:.15rem}
+.creature .hpline .hpnum{font-size:.88rem;white-space:nowrap;font-variant-numeric:tabular-nums}
+.creature .hpline .hp{flex:1;margin-top:0}
+.creature .foefx{font-size:.85rem;margin-top:.1rem;display:flex;flex-wrap:wrap;gap:0 .8rem}
+.pal.away{opacity:.6}
 .foesort{text-align:right;margin-bottom:.3rem}
 .sortbtn{font:inherit;font-size:.85rem;background:none;border:0;cursor:pointer;color:var(--frame-hi);padding:0}
 .sortbtn:hover,.sortbtn:focus-visible{color:var(--gold)}
@@ -196,6 +197,7 @@ body.dragging #marker{display:block}
   <div id="cols">
     <div class="col zone" data-zone="c1">
       <section class="panel" data-panel="foes"><h2>Hostiles in sight</h2><div id="foes"></div></section>
+      <section class="panel" data-panel="pals"><h2>Companions</h2><div id="pals"></div></section>
       <section class="panel" data-panel="effects"><h2>Effects</h2><div id="effects"></div></section>
       <section class="panel" data-panel="combat"><h2>Combat</h2><div id="combat"></div></section>
       <section class="panel" data-panel="abilities"><h2>Abilities</h2><div id="abilities"></div></section>
@@ -464,24 +466,44 @@ function renderFoes(d){
     (byDanger?'near':'danger')+'" title="Show '+(byDanger?'nearest':'most dangerous')+' first">Sort: '+
     (byDanger?'Dangerous':'Nearest')+'</button></div>';
   $('foes').innerHTML=head+list.map(function(x){
-    var dir=DIR_GLYPH[x.dir]||'',hp;
-    // Exact hit points only arrive when the player can read them, so a bar is only ever drawn from
-    // real numbers. Otherwise the game's own health word stands in for it.
-    if(x.exact&&x.hpMax>0){
-      // The game's own health colour, whose bands follow the wound levels rather than a plain
-      // percentage, so the figures agree with what the game shows for the same creature.
-      var col=PAL[x.hcol]||pctColor(x.hp/x.hpMax);
-      hp='<div class="hpline"><span class="hpnum" style="color:'+col+'">'+x.hp+'/'+x.hpMax+'</span>'+
-         bar(x.hp,x.hpMax,col,'hp')+'</div>';
-    }else hp=x.health?'<div class="hpw">'+qud(x.health)+'</div>':'';
-    var fx=(x.effects||[]).map(function(e){
-      return '<span class="fx '+(e.disease?'dis':e.negative?'bad':'good')+'">'+
-             '<span class="nm">'+qud(e.name)+'</span></span>';
-    }).join('');
-    return '<div class="item foe'+(x.distance<=1?' adj':'')+'">'+
+    return '<div class="item creature foe'+(x.distance<=1?' adj':'')+'">'+
       row(qud(x.name)+' <span class="dim">L'+num(x.level)+'</span>'+(x.rating?' '+qud(x.rating):''),
-          '<span class="dist">'+(x.distance<=1?'adjacent':x.distance+' away')+(dir?' '+dir:'')+'</span>')+
-      hp+(fx?'<div class="foefx">'+fx+'</div>':'')+'</div>';
+          '<span class="dist">'+where(x)+'</span>')+condition(x)+'</div>';
+  }).join('');
+}
+
+function where(x){
+  var dir=DIR_GLYPH[x.dir]||'';
+  return (x.distance<=1?'adjacent':x.distance+' away')+(dir?' '+dir:'');
+}
+// Health and effects as the player perceives them, for hostiles and companions alike.
+function condition(x){
+  var hp;
+  // Exact hit points only arrive when the player can read them, so a bar is only ever drawn from
+  // real numbers. Otherwise the game's own health word stands in for it.
+  if(x.exact&&x.hpMax>0){
+    // The game's own health colour, whose bands follow the wound levels rather than a plain
+    // percentage, so the figures agree with what the game shows for the same creature.
+    var col=PAL[x.hcol]||pctColor(x.hp/x.hpMax);
+    hp='<div class="hpline"><span class="hpnum" style="color:'+col+'">'+x.hp+'/'+x.hpMax+'</span>'+
+       bar(x.hp,x.hpMax,col,'hp')+'</div>';
+  }else hp=x.health?'<div class="hpw">'+qud(x.health)+'</div>':'';
+  var fx=(x.effects||[]).map(function(e){
+    return '<span class="fx '+(e.disease?'dis':e.negative?'bad':'good')+'">'+
+           '<span class="nm">'+qud(e.name)+'</span></span>';
+  }).join('');
+  return hp+(fx?'<div class="foefx">'+fx+'</div>':'');
+}
+
+function renderCompanions(d){
+  var c=d.companions;
+  if(c===null||c===undefined){$('pals').innerHTML=empty('Companion tracking unavailable in this game version.');return;}
+  if(!c.length){$('pals').innerHTML=empty('No companions in this zone.');return;}
+  $('pals').innerHTML=c.map(function(x){
+    var head=qud(x.name)+' <span class="dim">L'+num(x.level)+'</span>';
+    // Out of sight you know they are with you, not where they are or how they are doing.
+    if(!x.seen)return '<div class="item creature pal away">'+row(head,'<span class="dim">out of sight</span>')+'</div>';
+    return '<div class="item creature pal">'+row(head,'<span class="dist">'+where(x)+'</span>')+condition(x)+'</div>';
   }).join('');
 }
 
@@ -537,7 +559,7 @@ function renderSurvival(d){
 
 var lastPayload=null;
 var PARTS=[['Header',renderHead],['Pressing matters',renderWarn],['Effects',renderEffects],
-  ['Abilities',renderAbilities],['Hostiles',renderFoes],['Gear',renderGear],
+  ['Abilities',renderAbilities],['Hostiles',renderFoes],['Companions',renderCompanions],['Gear',renderGear],
   ['Attributes',renderAttrs],['Combat',renderCombat],['Survival',renderSurvival]];
 // A panel a game update has broken would otherwise fail silently on every payload. Logging it
 // each time floods the console and holds every Error alive, so each distinct fault is reported

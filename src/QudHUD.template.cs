@@ -231,6 +231,7 @@ namespace QudHUD
             Section("abilities", () => BuildAbilities(p, d));
             Section("gear", () => BuildGear(p, d, alerts));
             Section("hostiles", () => BuildHostiles(p, d, alerts));
+            Section("companions", () => BuildCompanions(p, d));
 
             alerts.Sort((a, b) => ((int)b["sev"]).CompareTo((int)a["sev"]));
             var list = new List<object>();
@@ -663,6 +664,84 @@ namespace QudHUD
             return Compass[(int)Math.Round(deg / 45.0) % 8];
         }
 
+        // Health and effects as the player can perceive them, shared by hostiles and companions.
+        static void AddCondition(GameObject p, object o, Dictionary<string, object> entry, int hp, int hpMax)
+        {
+            bool exact = Perception.Sees(p, o);
+            entry["exact"] = exact;
+            // Without a scanner the exact numbers are not sent at all, so the page cannot leak them
+            // back through a proportional bar.
+            if (exact) { entry["hp"] = hp; entry["hpMax"] = hpMax; entry["hcol"] = Health.Color(o, hp, hpMax); }
+            else entry["health"] = Health.Describe(o, hp, hpMax);
+
+            // What is wrong with it, filtered by the game's own rule for what shows when you look at
+            // a creature rather than by listing everything it happens to be carrying.
+            var fx = new List<object>();
+            foreach (object e in EffectsOf(o))
+            {
+                if (R.Bool(R.Call(e, "SuppressInLookDisplay"))) continue;
+                Dictionary<string, object> described = DescribeEffect(e);
+                if (described == null) continue;
+                fx.Add(new Dictionary<string, object> {
+                    { "name", described["name"] },
+                    { "negative", described["negative"] },
+                    { "disease", described["disease"] }
+                });
+                if (fx.Count >= 6) break;
+            }
+            if (fx.Count > 0) entry["effects"] = fx;
+        }
+
+        // Anyone following the player, directly or through another follower. There is no published
+        // API, so this asks the likeliest calls in turn; none answering means no companions, and the
+        // panel simply says so rather than guessing.
+        static bool IsCompanion(object o, GameObject p)
+        {
+            object led = R.Call(o, "IsPlayerLed");
+            if (led is bool) return (bool)led;
+            object leader = R.Get(R.Call(o, "GetPart", "Brain"), "PartyLeader");
+            if (leader != null) return ReferenceEquals(leader, p);
+            return R.Bool(R.Call(o, "IsLedBy", p));
+        }
+
+        static void BuildCompanions(GameObject p, Dictionary<string, object> d)
+        {
+            object zone = R.Get(p, "CurrentZone");
+            IEnumerable objs = R.Call(zone, "GetObjectsWithPart", "Brain") as IEnumerable;
+            if (objs == null) { d["companions"] = null; return; }
+
+            var found = new List<Dictionary<string, object>>();
+            foreach (object o in objs)
+            {
+                if (o == null || ReferenceEquals(o, p) || !IsCompanion(o, p)) continue;
+                object hpVal = SVOrNull(o, "Hitpoints");
+                if (hpVal != null && (int)hpVal <= 0) continue;
+                var entry = new Dictionary<string, object> { { "name", Name(o) }, { "level", SV(o, "Level") } };
+                // Out of sight, you know they exist but not where they are or how they are doing.
+                bool seen = CurrentlyVisible(o);
+                entry["seen"] = seen;
+                if (seen)
+                {
+                    entry["distance"] = R.Int(R.Call(p, "DistanceTo", o), 99);
+                    entry["dir"] = Direction(p, o);
+                    AddCondition(p, o, entry, SV(o, "Hitpoints"), SB(o, "Hitpoints"));
+                }
+                found.Add(entry);
+            }
+
+            // Those in sight first and nearest first, then the rest by name.
+            found.Sort((a, b) =>
+            {
+                bool sa = (bool)a["seen"], sb = (bool)b["seen"];
+                if (sa != sb) return sa ? -1 : 1;
+                if (sa) return ((int)a["distance"]).CompareTo((int)b["distance"]);
+                return string.Compare(R.Strip((string)a["name"]), R.Strip((string)b["name"]), StringComparison.OrdinalIgnoreCase);
+            });
+            var list = new List<object>();
+            foreach (var f in found) list.Add(f);
+            d["companions"] = list;
+        }
+
         static void BuildHostiles(GameObject p, Dictionary<string, object> d, List<Dictionary<string, object>> alerts)
         {
             object zone = R.Get(p, "CurrentZone");
@@ -682,36 +761,14 @@ namespace QudHUD
                 if (!R.Bool(hostile)) continue;
                 if (!CurrentlyVisible(o)) continue;
                 int hp = SV(o, "Hitpoints"), hpMax = SB(o, "Hitpoints");
-                bool exact = Perception.Sees(p, o);
                 var entry = new Dictionary<string, object> {
                     { "name", Name(o) },
                     { "level", SV(o, "Level") },
                     { "rating", Rating(o, p) },
                     { "distance", R.Int(R.Call(p, "DistanceTo", o), 99) },
-                    { "dir", Direction(p, o) },
-                    { "exact", exact }
+                    { "dir", Direction(p, o) }
                 };
-                // Without a scanner the exact numbers are not sent at all, so the page cannot
-                // leak them back through a proportional bar.
-                if (exact) { entry["hp"] = hp; entry["hpMax"] = hpMax; entry["hcol"] = Health.Color(o, hp, hpMax); }
-                else entry["health"] = Health.Describe(o, hp, hpMax);
-
-                // What is wrong with it, filtered by the game's own rule for what shows when you
-                // look at a creature rather than by listing everything it happens to be carrying.
-                var fx = new List<object>();
-                foreach (object e in EffectsOf(o))
-                {
-                    if (R.Bool(R.Call(e, "SuppressInLookDisplay"))) continue;
-                    Dictionary<string, object> described = DescribeEffect(e);
-                    if (described == null) continue;
-                    fx.Add(new Dictionary<string, object> {
-                        { "name", described["name"] },
-                        { "negative", described["negative"] },
-                        { "disease", described["disease"] }
-                    });
-                    if (fx.Count >= 6) break;
-                }
-                if (fx.Count > 0) entry["effects"] = fx;
+                AddCondition(p, o, entry, hp, hpMax);
 
                 // danger travels with the list so the page can re-sort by it; the rating it comes
                 // from is on screen anyway. Hit points order the list even for creatures whose
