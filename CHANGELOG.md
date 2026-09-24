@@ -1,6 +1,7 @@
 # Changelog
 
 ## 1.0.10
+- Fixed: on Linux with a Flatpak browser, such as the Firefox that Bazzite ships, the page sat on "Waiting for Caves of Qud" forever with the game running. The sandbox hands the browser the page alone, not the data file beside it. The page now recognises this and says how to grant access, and the READMEs give the Linux location, `~/QudHUD`, rather than `Documents/QudHUD`.
 - Fixed: dismissed unspent point reminders came back when you levelled up, and all of them came back after playing another character. A dismissal now belongs to one character and one kind of point, and lasts until that character spends them.
 - Added: a Minimap of the current zone. It shows what your character knows and nothing more: unexplored ground is blank, what is in view is drawn live, and places you have seen but cannot see now are drawn faded, as they were when you last saw them, with no creatures in them.
 - Added: a Nearby objects panel listing what is in view around you, nearest first: items, stairs, containers, plants, liquid pools and creatures that are neither hostile nor with you. Options can narrow it to takeable items, or hide plants or pools, as the game's own list can.

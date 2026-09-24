@@ -8,7 +8,9 @@ Subscribe on the Steam Workshop, or copy the `QudHUD` folder into your Caves of 
 - macOS: `~/Library/Application Support/com.FreeholdGames.CavesOfQud/Mods`
 - Linux: `~/.config/unity3d/Freehold Games/CavesOfQud/Mods`
 
-Enable it in the Mods menu, then start or load a game. The message log shows where the display page was written, normally `Documents/QudHUD/hud.html`. Open it in Chrome, Edge or Firefox on your second monitor (F11 for fullscreen).
+Enable it in the Mods menu, then start or load a game. The message log shows where the display page was written, normally `Documents/QudHUD/hud.html` (`~/QudHUD/hud.html` on Linux). Open it in Chrome, Edge or Firefox on your second monitor (F11 for fullscreen).
+
+On Linux, a browser installed as a Flatpak (the Firefox on Bazzite, for one) cannot see that folder, and the page will say so. Run `flatpak override --user --filesystem=~/QudHUD:ro org.mozilla.firefox` once, with your browser's ID from `flatpak list --app`, restart the browser, then type `file://` and the page's path into the address bar rather than opening it from a file manager.
 
 ## Use
 The page updates right before each of your turns, after everything else has acted.

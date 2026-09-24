@@ -71,7 +71,7 @@ async function load(opts={}){
   });
   vc.on('error',(...a)=>errs.push('console.error: '+a.join(' ')));
   const html=fs.readFileSync(path.join(DIR,'hud.html'),'utf8');
-  const dom=new JSDOM(html,{url:BASE+'/hud.html',runScripts:'dangerously',resources:'usable',
+  const dom=new JSDOM(html,{url:BASE+(opts.path||'/hud.html'),runScripts:'dangerously',resources:'usable',
     pretendToBeVisual:true,virtualConsole:vc,
     beforeParse(w){if(opts.store)Object.keys(opts.store).forEach(k=>w.localStorage.setItem(k,opts.store[k]));}});
   await new Promise(r=>setTimeout(r,600));
@@ -744,6 +744,23 @@ async function load(opts={}){
   w.__qudhud.render({version:VER,seq:200,stamp:'12:00:00',data:DATA});  // healthy payload
   check('recovered panel clears the footer',d.getElementById('broke').hidden);
   check('other panels still drew while one was broken',/Tester/.test(d.getElementById('who').textContent));
+  dom.window.close();
+
+  // --- a Flatpak browser opens the page through the document portal, which hands over this one
+  // file and not its folder, so hud_data.js never loads. The page must say so, not wait forever.
+  writeData(0,1);
+  ({dom,errs,d}=await load());
+  check('ordinary address: no sandbox notice',d.getElementById('sandboxed').hidden);
+  dom.window.close();
+  ({dom,errs,d}=await load({path:'/run/user/1000/doc/8f3a2c1d/hud.html'}));
+  check('portal address: still waiting, data unreachable',d.body.classList.contains('waiting'));
+  check('portal address: sandbox notice shown',!d.getElementById('sandboxed').hidden);
+  check('portal address: notice gives the override command',
+        /flatpak override --user --filesystem=~\/QudHUD:ro/.test(d.getElementById('sandboxed').textContent));
+  check('portal address: footer names the cause',/sandboxed/.test(d.getElementById('link').textContent),
+        JSON.stringify(d.getElementById('link').textContent));
+  errs=errs.filter(e=>!/Could not load script: .*hud_data\.js/.test(e));   // that failure is the point
+  check('portal address: no other errors',errs.length===0,errs.join(' | '));
   dom.window.close();
 
   // --- storage paths: a saved layout must be reapplied, and options must persist

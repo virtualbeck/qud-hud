@@ -22,10 +22,21 @@ and extract the `QudHUD` folder into your Caves of Qud `Mods` folder:
 | Linux | `~/.config/unity3d/Freehold Games/CavesOfQud/Mods` |
 
 Either way: enable it in the Mods menu, start or load a game, and the message log will tell you
-where the display page was written, normally `Documents/QudHUD/hud.html`. Open that in a browser
-on your second monitor.
+where the display page was written, normally `Documents/QudHUD/hud.html` (`~/QudHUD/hud.html` on
+Linux). Open that in a browser on your second monitor.
 
 Nothing is sent anywhere. The page reads a local file the mod writes; no server, no network.
+
+**Flatpak browsers on Linux**, such as the Firefox that Bazzite ships, cannot see that folder. The
+page opens but never gets past the waiting screen, and says why. Run this once, using your
+browser's ID from `flatpak list --app`, then restart the browser:
+
+```
+flatpak override --user --filesystem=~/QudHUD:ro org.mozilla.firefox
+```
+
+Then open the page by typing `file://` followed by its path into the address bar, rather than from
+a file manager, which hands the browser the page alone and not the data beside it.
 
 ## Use
 

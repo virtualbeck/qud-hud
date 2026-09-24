@@ -124,6 +124,10 @@ body.stale #app{opacity:.32;filter:grayscale(.6)}
 #wait{display:none;max-width:40rem;margin:18vh auto 0;text-align:center}
 #wait .panel{text-align:left}
 #wait p+p{margin-top:.6rem}
+#wait #sandboxed{margin-top:1rem}
+#wait .bad{color:var(--crit)}
+#wait pre{margin:.6rem 0;padding:.5rem .6rem;background:rgba(0,0,0,.35);white-space:pre-wrap;word-break:break-all;user-select:all}
+#wait pre,#wait code{font-family:Consolas,'DejaVu Sans Mono',monospace;font-size:.9em}
 body.waiting #app{display:none}
 body.waiting #wait{display:block}
 
@@ -185,6 +189,13 @@ body.dragging #marker{display:block}
   <div class="panel"><h2>Qud HUD</h2>
     <p>Waiting for Caves of Qud.</p>
     <p class="dim">Start or load a game with the Qud HUD mod enabled. This page refreshes itself once a second; keep it open on your second monitor.</p>
+    <div id="sandboxed" hidden>
+      <p class="bad">This browser cannot see the game's data.</p>
+      <p>It is a Flatpak app, such as the Firefox that Bazzite ships, and it was handed this one page on its own rather than the folder it sits in. The data the game writes beside it never reaches it, so this page would wait forever.</p>
+      <p>To fix it, run this once in a terminal, then restart the browser:</p>
+      <pre>flatpak override --user --filesystem=~/QudHUD:ro org.mozilla.firefox</pre>
+      <p class="dim">For another browser, use its ID from <code>flatpak list --app</code> in place of <code>org.mozilla.firefox</code>. After that, open the page by typing its address into the address bar, <code>file://</code> followed by the path the game's message log gives you, rather than opening it from a file manager, which hands it over the same sandboxed way again.</p>
+    </div>
   </div>
 </div>
 
@@ -691,6 +702,11 @@ function render(p){
 
 // Polling: re-inject the data script with a cache buster. Works from file:// without a server.
 var lastSeq=null,loading=false;
+// A Flatpak browser opening a file through the document portal gets that one file under
+// /run/user/<uid>/doc/, not its folder, so hud_data.js beside it can never load. Say so rather
+// than wait for a game that is already running.
+var SANDBOXED=/^\/run\/user\/\d+\/doc\//.test(location.pathname);
+if(SANDBOXED)$('sandboxed').hidden=false;
 var STALE_MS=2*60*1000;
 function setLink(state,text){
   var l=$('link');l.className=state;l.textContent=text;
@@ -735,7 +751,7 @@ function poll(){
     var key=p.seq+'|'+p.stamp;if(key!==lastSeq){lastSeq=key;render(p);}
     showLink(p);
   };
-  s.onerror=function(){loading=false;s.parentNode.removeChild(s);setLink('off','Waiting for Caves of Qud');};
+  s.onerror=function(){loading=false;s.parentNode.removeChild(s);setLink('off',SANDBOXED?'This browser is sandboxed and cannot see the data file':'Waiting for Caves of Qud');};
   document.head.appendChild(s);
 }
 
