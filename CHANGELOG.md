@@ -1,6 +1,7 @@
 # Changelog
 
 ## 1.0.10
+- Fixed: dismissed unspent point reminders came back when you levelled up, and all of them came back after playing another character. A dismissal now belongs to one character and one kind of point, and lasts until that character spends them.
 - Added: a Minimap of the current zone. It shows what your character knows and nothing more: unexplored ground is blank, what is in view is drawn live, and places you have seen but cannot see now are drawn faded, as they were when you last saw them, with no creatures in them.
 - Added: a Nearby objects panel listing what is in view around you, nearest first: items, stairs, containers, plants, liquid pools and creatures that are neither hostile nor with you. Options can narrow it to takeable items, or hide plants or pools, as the game's own list can.
 - Changed: the Minimap, Nearby objects and Messages panels share a third column by default, as the game docks them together. A layout you have already arranged is kept.

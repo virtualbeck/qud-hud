@@ -39,7 +39,7 @@ Full instructions are in [mod/README.md](mod/README.md), which ships with the mo
 - **Minimap**, **Nearby objects** and **Messages** mirror the three windows the game docks together,
   showing only what your character knows.
 - Unspent point reminders in **Pressing matters** can be dismissed with the `×` beside them, until
-  the number changes.
+  you spend them.
 - **Options** can also hide abilities that are simply ready.
 - The dot in the footer is green while the data is current, amber once nothing has been written for
   a couple of minutes, and red if the file can't be read. The readings fade when they go stale, so a

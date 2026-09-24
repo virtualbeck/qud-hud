@@ -339,27 +339,37 @@ function localAlerts(d){
   }
   return out;
 }
-// Reminders the mod marks as dismissable can be silenced from Pressing matters. A dismissal is
-// remembered against the exact wording, so spending the points clears it and gaining more brings
-// the reminder back rather than leaving it silenced forever.
+// Reminders the mod marks as dismissable can be silenced from Pressing matters. A dismissal belongs to
+// one character and one kind of point, and lasts until that character spends them. Levelling up
+// changes the number, which is why it is not keyed on the wording; playing another character in the
+// meantime leaves it alone, which is why it is keyed on the character.
 var DISMISS_KEY='qudhud.dismissed',dismissed={};
-try{(JSON.parse(localStorage.getItem(DISMISS_KEY))||[]).forEach(function(t){dismissed[t]=1;});}catch(e){}
 function saveDismissed(){
   var out=[],k;
   for(k in dismissed)out.push(k);
   try{localStorage.setItem(DISMISS_KEY,JSON.stringify(out));}catch(e){}
 }
+try{
+  var saved=JSON.parse(localStorage.getItem(DISMISS_KEY))||[],dropped=false;
+  saved.forEach(function(k){
+    if(k.indexOf('|')>=0)dismissed[k]=1;
+    else dropped=true;                     // keyed on wording by an older version; can never match
+  });
+  if(dropped)saveDismissed();
+}catch(e){}
+function whose(d){return plain((d.player||{}).name||'')+'|';}
 function allAlerts(d){
   var all=(d.alerts||[]).concat(localAlerts(d));
-  var live={},stale=false,k;
-  all.forEach(function(a){if(a.dis)live[a.text]=1;});
-  for(k in dismissed)if(!live[k]){delete dismissed[k];stale=true;}
+  var who=whose(d),live={},stale=false,k;
+  all.forEach(function(a){if(a.dis)live[who+a.dis]=1;});
+  // only this character's dismissals can lapse, and only once the reminder has gone: points spent
+  for(k in dismissed)if(k.indexOf(who)===0&&!live[k]){delete dismissed[k];stale=true;}
   if(stale)saveDismissed();
-  return all.filter(function(a){return !(a.dis&&dismissed[a.text]);})
+  return all.filter(function(a){return !(a.dis&&dismissed[who+a.dis]);})
             .sort(function(a,b){return b.sev-a.sev;});
 }
-function dismiss(text){
-  dismissed[text]=1;saveDismissed();
+function dismiss(key){
+  dismissed[key]=1;saveDismissed();
   if(lastPayload)render(lastPayload);
 }
 var QUIPS=[
@@ -416,8 +426,8 @@ function renderWarn(d){
   quietLast=null;
   $('warnBody').innerHTML='<ul>'+a.map(function(x){
     return '<li class="s'+x.sev+'"><span class="g">'+glyph[x.sev]+'</span>'+esc(x.text)+
-      (x.dis?'<button type="button" class="drop" data-text="'+esc(x.text)+
-             '" title="Dismiss until this changes" aria-label="Dismiss: '+esc(x.text)+'">×</button>':'')+
+      (x.dis?'<button type="button" class="drop" data-key="'+esc(whose(d)+x.dis)+
+             '" title="Dismiss until these are spent" aria-label="Dismiss: '+esc(x.text)+'">×</button>':'')+
       '</li>';
   }).join('')+'</ul>';
 }
@@ -952,7 +962,7 @@ $('ver').textContent=PAGE_VERSION;
 // Delegated, because both panels are rewritten on every update.
 $('warnBody').addEventListener('click',function(e){
   var t=e.target;
-  if(t&&t.classList&&t.classList.contains('drop'))dismiss(t.getAttribute('data-text'));
+  if(t&&t.classList&&t.classList.contains('drop'))dismiss(t.getAttribute('data-key'));
 });
 $('foes').addEventListener('click',function(e){
   var t=e.target;

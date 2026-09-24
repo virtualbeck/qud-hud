@@ -249,12 +249,13 @@ namespace QudHUD
             try { a(); } catch (Exception ex) { Hud.Log("section " + name, ex); }
         }
 
-        // dismissable marks a reminder the page may let the player silence, for things that are
-        // not going anywhere and are shown elsewhere on the display anyway.
-        static void Alert(List<Dictionary<string, object>> alerts, int sev, string text, bool dismissable = false)
+        // dismiss names a reminder the page may let the player silence, for things that are not
+        // going anywhere and are shown elsewhere on the display anyway. It is a stable name rather than
+        // the wording, which changes with the number in it.
+        static void Alert(List<Dictionary<string, object>> alerts, int sev, string text, string dismiss = null)
         {
             var a = new Dictionary<string, object> { { "sev", sev }, { "text", text } };
-            if (dismissable) a["dis"] = true;
+            if (dismiss != null) a["dis"] = dismiss;
             alerts.Add(a);
         }
 
@@ -437,9 +438,9 @@ namespace QudHUD
             d["survival"] = s;
 
             int ap = SV(p, "AP"), sp = SV(p, "SP"), mp = SV(p, "MP");
-            if (ap > 0) Alert(alerts, 1, ap + " unspent attribute point" + (ap == 1 ? "" : "s"), true);
-            if (mp > 0) Alert(alerts, 1, mp + " unspent mutation point" + (mp == 1 ? "" : "s"), true);
-            if (sp >= 50) Alert(alerts, 1, sp + " unspent skill points", true);
+            if (ap > 0) Alert(alerts, 1, ap + " unspent attribute point" + (ap == 1 ? "" : "s"), "ap");
+            if (mp > 0) Alert(alerts, 1, mp + " unspent mutation point" + (mp == 1 ? "" : "s"), "mp");
+            if (sp >= 50) Alert(alerts, 1, sp + " unspent skill points", "sp");
         }
 
         static void EnsureEffectTypes()

@@ -17,7 +17,7 @@ The page updates right before each of your turns, after everything else has acte
 - `+` and `-` resize, `0` resets size. `R` restores the default layout and unhides everything.
 - **Options** in the footer: low fresh water warning and threshold, hiding abilities that are simply ready, which panels are shown, and the installed version.
 - **Hostiles in sight** has a Sort toggle in its top right, switching between nearest first and most dangerous first. Your choice is remembered.
-- Unspent point reminders in **Pressing matters** have an × to dismiss them. They come back if the number changes, and the totals are always in **Survival**.
+- Unspent point reminders in **Pressing matters** have an × to dismiss them. A dismissal lasts until you spend those points, levelling up does not undo it, and playing another character does not affect it. The totals are always in **Survival**.
 
 The dot at the bottom left tells you whether what you're looking at is current:
 - **Green**: live.

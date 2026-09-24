@@ -478,48 +478,79 @@ async function load(opts={}){
     dom.window.close();
   }
 
-  // --- dismissable reminders in Pressing matters
-  DATA.alerts=[{sev:3,text:'1 hostile adjacent to you'},
-               {sev:1,text:'160 unspent skill points',dis:true},
-               {sev:1,text:'2 unspent mutation points',dis:true}];
-  DATA.survival={};                                  // no water warning in the way
-  writeData(0,1);
-  ({dom,errs,d}=await load());
-  let warn=d.getElementById('warnBody'), win=dom.window;
-  check('dismissable alerts get a button',warn.querySelectorAll('.drop').length===2,
-        warn.querySelectorAll('.drop').length+' buttons');
-  check('non-dismissable alert has none',
-        warn.querySelectorAll('li').length===3&&warn.querySelectorAll('.drop').length===2);
-  // dismiss the skill points reminder
-  warn.querySelector('[data-text="160 unspent skill points"]').click();
-  warn=d.getElementById('warnBody');
-  check('dismissed alert disappears',!/160 unspent skill points/.test(warn.textContent));
-  check('other alerts remain',/hostile adjacent/.test(warn.textContent)&&/2 unspent mutation/.test(warn.textContent));
-  check('dismissal persisted',
-        JSON.parse(win.localStorage.getItem('qudhud.dismissed')||'[]').indexOf('160 unspent skill points')>=0);
-  dom.window.close();
+  // --- dismissable reminders in Pressing matters: per character, per kind, until spent
+  {
+    const tester=DATA.player;
+    const stored=()=>JSON.parse(win.localStorage.getItem('qudhud.dismissed')||'[]');
+    DATA.alerts=[{sev:3,text:'1 hostile adjacent to you'},
+                 {sev:1,text:'160 unspent skill points',dis:'sp'},
+                 {sev:1,text:'2 unspent mutation points',dis:'mp'}];
+    DATA.survival={};                                  // no water warning in the way
+    writeData(0,1);
+    ({dom,errs,d}=await load());
+    let warn=d.getElementById('warnBody'), win=dom.window;
+    check('dismissable alerts get a button',warn.querySelectorAll('.drop').length===2,
+          warn.querySelectorAll('.drop').length+' buttons');
+    check('non-dismissable alert has none',
+          warn.querySelectorAll('li').length===3&&warn.querySelectorAll('.drop').length===2);
+    warn.querySelector('[data-key="Tester|sp"]').click();
+    warn=d.getElementById('warnBody');
+    check('dismissed alert disappears',!/unspent skill points/.test(warn.textContent));
+    check('other alerts remain',/hostile adjacent/.test(warn.textContent)&&/2 unspent mutation/.test(warn.textContent));
+    check('dismissal persisted, keyed by character and kind',stored().join()==='Tester|sp',stored().join());
+    dom.window.close();
+    const saved=JSON.stringify(['Tester|sp']);
 
-  // it stays dismissed across a reload while the wording is unchanged
-  ({dom,errs,d}=await load({store:{'qudhud.dismissed':JSON.stringify(['160 unspent skill points'])}}));
-  check('still dismissed after reload',!/160 unspent skill points/.test(d.getElementById('warnBody').textContent));
-  dom.window.close();
+    // reported: levelling up brought it back. The number changes, the dismissal must not lapse.
+    DATA.alerts=[{sev:1,text:'170 unspent skill points',dis:'sp'}];
+    writeData(0,2);
+    ({dom,errs,d}=await load({store:{'qudhud.dismissed':saved}}));
+    win=dom.window;
+    check('levelling up does not bring it back',!/170 unspent skill points/.test(d.getElementById('warnBody').textContent));
+    check('levelling up keeps the dismissal',stored().join()==='Tester|sp',stored().join());
+    dom.window.close();
 
-  // gaining more points changes the wording, so the reminder comes back and the stale entry goes
-  DATA.alerts=[{sev:1,text:'170 unspent skill points',dis:true}];
-  writeData(0,2);
-  ({dom,errs,d}=await load({store:{'qudhud.dismissed':JSON.stringify(['160 unspent skill points'])}}));
-  check('new wording reappears',/170 unspent skill points/.test(d.getElementById('warnBody').textContent));
-  check('stale dismissal forgotten',
-        JSON.parse(dom.window.localStorage.getItem('qudhud.dismissed')||'[]').length===0);
-  dom.window.close();
+    // reported: another character in between brought all of them back
+    DATA.player=Object.assign({},tester,{name:'Mehmet'});
+    DATA.alerts=[];
+    writeData(0,3);
+    ({dom,errs,d}=await load({store:{'qudhud.dismissed':saved}}));
+    win=dom.window;
+    check('another character with no points leaves it alone',stored().join()==='Tester|sp',stored().join());
+    dom.window.close();
+    DATA.player=tester;
+    DATA.alerts=[{sev:1,text:'175 unspent skill points',dis:'sp'}];
+    writeData(0,4);
+    ({dom,errs,d}=await load({store:{'qudhud.dismissed':saved}}));
+    check('back on the first character it is still dismissed',!/unspent skill points/.test(d.getElementById('warnBody').textContent));
+    dom.window.close();
 
-  // dismissing everything leaves the quiet state, not an empty list
-  DATA.alerts=[{sev:1,text:'170 unspent skill points',dis:true}];
-  writeData(0,3);
-  ({dom,errs,d}=await load({store:{'qudhud.dismissed':JSON.stringify(['170 unspent skill points'])}}));
-  check('all dismissed shows the quiet state',/Nothing pressing/.test(d.getElementById('warnBody').textContent));
-  check('dismissal does not drop the critical title prefix',!/^!! /.test(d.title),JSON.stringify(d.title));
-  dom.window.close();
+    // spending them is what lets it lapse, so banking points again later is reminded afresh
+    DATA.alerts=[];
+    writeData(0,5);
+    ({dom,errs,d}=await load({store:{'qudhud.dismissed':saved}}));
+    win=dom.window;
+    check('spending the points lets the dismissal lapse',stored().length===0,stored().join());
+    dom.window.close();
+    DATA.alerts=[{sev:1,text:'60 unspent skill points',dis:'sp'}];
+    writeData(0,6);
+    ({dom,errs,d}=await load());
+    check('banking points again brings it back',/60 unspent skill points/.test(d.getElementById('warnBody').textContent));
+    dom.window.close();
+
+    // a dismissal from an older version was keyed on wording and can never match, so it is dropped
+    ({dom,errs,d}=await load({store:{'qudhud.dismissed':JSON.stringify(['160 unspent skill points'])}}));
+    win=dom.window;
+    check('old wording-keyed entries are dropped',stored().length===0,stored().join());
+    dom.window.close();
+
+    // dismissing everything leaves the quiet state, not an empty list
+    ({dom,errs,d}=await load({store:{'qudhud.dismissed':JSON.stringify(['Tester|sp'])}}));
+    check('all dismissed shows the quiet state',/Nothing pressing/.test(d.getElementById('warnBody').textContent));
+    check('dismissal does not drop the critical title prefix',!/^!! /.test(d.title),JSON.stringify(d.title));
+    check('dismissals: no errors',errs.length===0,errs.join(' | '));
+    dom.window.close();
+  }
   DATA.alerts=[{sev:3,text:'1 hostile adjacent to you'},{sev:2,text:'Hit points low: 30 / 60'}];
   DATA.survival={water:'quenched',food:'not hungry',drams:5,temp:25,flame:350,freeze:-100,weight:50,maxWeight:200};
 
