@@ -18,8 +18,10 @@ account. SteamCMD will prompt for the password and, on first login from this
 machine, a Steam Guard code. It updates the item named by mod/workshop.json and
 never creates a new one; it leaves the Workshop description alone.
 
---release needs `gh` on PATH and logged in. It refuses to run on a dirty tree,
-on a version with no CHANGELOG section, or when the tag already exists. Release
+--release needs `gh` on PATH and logged in, and Node with the test dependencies
+installed (`npm install` in tests/), because it runs the whole test suite before
+tagging anything. It refuses to run on a dirty tree, on a failing test, on a
+version with no CHANGELOG section, or when the tag already exists. Release
 notes cover every CHANGELOG section since the previous tag, so versions that
 were never released still reach people who download the zip.
 
@@ -222,6 +224,19 @@ Found a bug? Please [open an issue]({repo}/issues).
 """
 
 
+def run_tests():
+    """The whole suite, so a release cannot go out with a failing test."""
+    tests = ROOT / "tests"
+    # node itself rather than npm: on Windows npm is a .cmd shim that needs a shell to launch
+    if shutil.which("node") is None:
+        sys.exit("node not found on PATH. --release runs the test suite first; install Node, then re-run.")
+    if not (tests / "node_modules" / "jsdom").exists():
+        sys.exit("Test dependencies are missing. Run `npm install` in tests/, then re-run with --release.")
+    print("Running the test suite...")
+    if subprocess.run(["node", str(tests / "run.js")], cwd=tests).returncode != 0:
+        sys.exit("Tests failed, so nothing was tagged or published. Fix them, then re-run with --release.")
+
+
 def release(version, assume_yes):
     if shutil.which("gh") is None:
         sys.exit("gh not found on PATH. Install the GitHub CLI and run `gh auth login`, then re-run with --release.")
@@ -238,6 +253,8 @@ def release(version, assume_yes):
     zpath = DIST / f"{MOD_ID}-v{version}.zip"
     if not zpath.exists():
         sys.exit(f"{zpath} is missing. Run the build first.")
+
+    run_tests()
 
     prev = previous_tag(tag)
     notes = DIST / "release_notes.md"

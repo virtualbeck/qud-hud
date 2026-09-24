@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 import zipfile
 from pathlib import Path
 
@@ -32,7 +33,7 @@ class Temp(unittest.TestCase):
 
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp(prefix="qudhud-"))
-        self.saved = {k: getattr(b, k) for k in ("ROOT", "DIST", "WORKSHOP_JSON", "git")}
+        self.saved = {k: getattr(b, k) for k in ("ROOT", "DIST", "WORKSHOP_JSON", "git", "run_tests")}
 
     def tearDown(self):
         for k, v in self.saved.items():
@@ -139,6 +140,44 @@ class Releases(Temp):
         notes = b.release_notes("1.0.0", None)
         self.assertIn("## Changes\n", notes)
         self.assertIn("### 1.0.0", notes)
+
+
+class ReleaseGate(Temp):
+    """--release runs the tests before it tags anything."""
+
+    def test_failing_tests_stop_the_release_before_anything_is_pushed(self):
+        version = (REPO / "VERSION").read_text().strip()
+        b.DIST = self.tmp
+        (self.tmp / f"QudHUD-v{version}.zip").write_bytes(b"zip")
+        calls = []
+
+        def git(*args):
+            calls.append(args)
+            return {"status": "", "tag": "v1.0.1", "rev-parse": "abc123"}.get(args[0], "")
+
+        def failing():
+            raise SystemExit("tests failed")
+
+        b.git, b.run_tests = git, failing
+        with mock.patch.object(b.shutil, "which", return_value="/usr/bin/gh"):
+            with self.assertRaises(SystemExit):
+                b.release(version, True)
+        self.assertFalse([c for c in calls if c[:2] == ("tag", "-a") or c[0] == "push"],
+                         "a tag was created or pushed despite failing tests")
+
+    def test_refuses_without_node(self):
+        b.ROOT = self.tmp
+        with mock.patch.object(b.shutil, "which", return_value=None):
+            with self.assertRaises(SystemExit) as e:
+                b.run_tests()
+        self.assertIn("node not found", str(e.exception))
+
+    def test_refuses_without_test_dependencies(self):
+        b.ROOT = self.tmp
+        with mock.patch.object(b.shutil, "which", return_value="/usr/bin/node"):
+            with self.assertRaises(SystemExit) as e:
+                b.run_tests()
+        self.assertIn("npm install", str(e.exception))
 
 
 class WorkshopVdf(Temp):
