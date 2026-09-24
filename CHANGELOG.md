@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.0.10
+- Changed: Trivial hostiles no longer set off the "adjacent to you" and "in sight" alarms in Pressing matters. A character who has outgrown them was getting a pulsing red alarm for every snapjaw, which teaches you to ignore the loudest thing on the page. They still appear in Hostiles in sight, and anything rated above Trivial still raises the alarm, with the distance given for the nearest real threat.
+
 ## 1.0.9
 - Added: AV and DV in the Combat panel now carry the game's marks, a solid diamond and a hollow circle, beside their values.
 - Fixed: with nerve poppy and a powered scanner, the hit points line showed loose numbers (17/17 2 10). The game returns a full scan readout there, hit points followed by armour and dodge, whose glyphs do not exist outside the game's own font. Being able to scan yourself now puts the line back to plain figures and a bar, and a scan readout can no longer arrive where a word is expected.

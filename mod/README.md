@@ -28,6 +28,7 @@ The dot at the bottom left tells you whether what you're looking at is current:
 - The page reads a local file; no server or internet connection is needed.
 - Your own hit points show as a word rather than figures if your character cannot read them, for instance with the nerve poppy defect.
 - Hostiles show a health word (Perfect, Fine, Injured, Wounded, Badly Wounded), the same as looking at them in game. You only get an exact hit point bar for creatures your character can actually scan, for instance while wearing a booted VISAGE or with one of the optical scanner implants. The game decides that, not the mod, so anything else granting it works too.
+- The hostile alarms in **Pressing matters** ignore creatures the game rates Trivial, so they only sound for things worth worrying about. Those creatures still appear in **Hostiles in sight**.
 - The mod adds a small tracker part to your character. Keep the mod enabled for saves made with it.
 - If a section stays empty after a game update, check `Player.log` for lines starting with `[QudHUD]`. If a panel stops drawing entirely, the footer names it and the browser console has the error.
 

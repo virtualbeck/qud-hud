@@ -751,11 +751,22 @@ namespace QudHUD
                 return ((int)b["_hp"]).CompareTo((int)a["_hp"]);
             });
 
+            // Trivial creatures are left out of the two proximity alarms. To a character who has
+            // outgrown them they are not a pressing matter, and an alarm that pulses red for every
+            // snapjaw teaches you to stop looking at it. They still appear in the panel. A rating
+            // the ladder does not recognise ranks 0 and still counts, so unfamiliar wording errs
+            // toward raising the alarm rather than hiding it.
             var list = new List<object>();
-            int adjacent = 0;
+            int adjacent = 0, threats = 0, nearest = -1;
             for (int i = 0; i < found.Count; i++)
             {
-                if ((int)found[i]["distance"] <= 1) adjacent++;
+                if ((int)found[i]["_danger"] != 1)
+                {
+                    threats++;
+                    int dist = (int)found[i]["distance"];
+                    if (nearest < 0) nearest = dist;
+                    if (dist <= 1) adjacent++;
+                }
                 if (i >= 15) continue;
                 found[i].Remove("_danger");
                 found[i].Remove("_hp");
@@ -773,7 +784,7 @@ namespace QudHUD
             }
 
             if (adjacent > 0) Alert(alerts, 3, adjacent + " hostile" + (adjacent == 1 ? "" : "s") + " adjacent to you");
-            else if (found.Count > 0) Alert(alerts, 2, found.Count + " hostile" + (found.Count == 1 ? "" : "s") + " in sight, nearest " + found[0]["distance"] + " away");
+            else if (threats > 0) Alert(alerts, 2, threats + " hostile" + (threats == 1 ? "" : "s") + " in sight, nearest " + nearest + " away");
         }
     }
 
