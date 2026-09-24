@@ -1,6 +1,9 @@
 # Changelog
 
 ## 1.0.10
+- Added: a Minimap of the current zone. It shows what your character knows and nothing more: unexplored ground is blank, what is in view is drawn live, and places you have seen but cannot see now are drawn faded, as they were when you last saw them, with no creatures in them.
+- Added: a Nearby objects panel listing what is in view around you, nearest first: items, stairs, containers, plants, liquid pools and creatures that are neither hostile nor with you. Options can narrow it to takeable items, or hide plants or pools, as the game's own list can.
+- Changed: the Minimap, Nearby objects and Messages panels share a third column by default, as the game docks them together. A layout you have already arranged is kept.
 - Added: a Messages panel showing the last dozen lines of the game's message log, newest last and in the game's colours, so a combat result or a warning does not scroll away while you are looking at the other screen.
 - Added: a Companions panel, beside Hostiles in sight. Followers in view show their health and what is wrong with them, by the same rules as hostiles: the game's health word, exact figures only when your character can scan them, and effects only when looking at them would show them. A follower out of sight is listed as such, with nothing about where it is or how it is doing.
 - Fixed: sorting Hostiles in sight by danger could never show a dangerous creature further away than the fifteenth nearest, because the list was cut in nearest order before it reached the page. Each sort now gets its own fifteen.

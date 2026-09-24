@@ -128,6 +128,8 @@ body.waiting #app{display:none}
 body.waiting #wait{display:block}
 
 .sep{border-top:1px dashed var(--frame);margin:.45rem 0 .35rem}
+#map canvas{display:block;image-rendering:pixelated;max-width:100%}
+.near .mark{margin-right:.5ch}
 .msg{font-size:.88rem;line-height:1.3;opacity:.7}
 .msg+.msg{margin-top:.15rem}
 .msg.latest{opacity:1}
@@ -209,9 +211,12 @@ body.dragging #marker{display:block}
       <section class="panel" data-panel="survival"><h2>Survival</h2><div id="survival"></div></section>
       <section class="panel" data-panel="gear"><h2>Gear</h2><div id="gear"></div></section>
       <section class="panel" data-panel="attrs"><h2>Attributes</h2><div id="attrs"></div></section>
+    </div>
+    <div class="col zone" data-zone="c3">
+      <section class="panel" data-panel="map"><h2>Minimap</h2><div id="map"></div></section>
+      <section class="panel" data-panel="near"><h2>Nearby objects</h2><div id="near"></div></section>
       <section class="panel" data-panel="msgs"><h2>Messages</h2><div id="msgs"></div></section>
     </div>
-    <div class="col zone" data-zone="c3"></div>
   </div>
 </div>
 
@@ -224,6 +229,12 @@ body.dragging #marker{display:block}
   <div class="opt sub">Only applies to characters who get thirsty.</div>
   <div class="opt"><button type="button" class="tog" role="switch" data-opt="abilQuiet" aria-checked="false">[ ]</button>
     <label>Hide abilities that are ready</label></div>
+  <div class="opt"><button type="button" class="tog" role="switch" data-opt="nearTakeable" aria-checked="false">[ ]</button>
+    <label>Nearby objects: only takeable items</label></div>
+  <div class="opt"><button type="button" class="tog" role="switch" data-opt="nearPlants" aria-checked="true">[X]</button>
+    <label>Nearby objects: show plants</label></div>
+  <div class="opt"><button type="button" class="tog" role="switch" data-opt="nearLiquids" aria-checked="true">[X]</button>
+    <label>Nearby objects: show liquid pools</label></div>
   <div class="phead">Panels</div>
   <div id="panelOpts"></div>
   <div class="ver">Qud HUD v<span id="ver"></span></div>
@@ -243,7 +254,7 @@ var SHADERS={fiery:'#d74200',icy:'#77bfcf',freezing:'#77bfcf',poisonous:'#00c420
 
 var PAGE_VERSION='__VERSION__';
 var OPTS_KEY='qudhud.opts';
-var opts={waterWarn:true,waterMin:8,abilQuiet:false};
+var opts={waterWarn:true,waterMin:8,abilQuiet:false,nearTakeable:false,nearPlants:true,nearLiquids:true};
 try{var so=JSON.parse(localStorage.getItem(OPTS_KEY));if(so){for(var k in opts)if(k in so)opts[k]=so[k];}}catch(e){}
 
 function esc(s){return String(s).replace(/[&<>'"]/g,function(c){
@@ -513,6 +524,68 @@ function renderCompanions(d){
 
 // The tail of the game's own message log, newest last as the game shows it, so a result or a
 // warning does not scroll away while you are looking at the other screen.
+// Run-length decoding for the map: a symbol, then how many times it repeats if more than once.
+// Symbols are never digits, so the counts read back unambiguously.
+function unrle(s){
+  var out=[],i=0;
+  while(i<s.length){
+    var ch=s.charAt(i++),n=0;
+    while(i<s.length&&s.charCodeAt(i)>=48&&s.charCodeAt(i)<=57)n=n*10+(s.charCodeAt(i++)-48);
+    for(var k=n||1;k>0;k--)out.push(ch);
+  }
+  return out;
+}
+var GROUND='#0e3230';
+// What to paint, cell by cell. The mod has already decided what the character knows: blank for
+// unexplored, the current view, or for cells out of sight what they looked like when last seen.
+// Remembered cells are drawn faded so the two cannot be mistaken for each other.
+function minimapCells(m){
+  var c=unrle(m.c||''),v=unrle(m.v||''),out=[];
+  for(var i=0;i<m.w*m.h&&i<c.length;i++){
+    if(c[i]===' ')continue;
+    out.push({x:i%m.w,y:Math.floor(i/m.w),col:c[i]==='-'?GROUND:(PAL[c[i]]||PAL.y),seen:v[i]==='V'});
+  }
+  return out;
+}
+function renderMinimap(d){
+  var m=d.map,box=$('map');
+  if(m===null||m===undefined){box.innerHTML=empty('Minimap unavailable in this game version.');return;}
+  var cv=box.querySelector('canvas');
+  if(!cv){box.innerHTML='';cv=document.createElement('canvas');box.appendChild(cv);}
+  // cells are taller than wide, as the game's own tiles are
+  var cw=Math.max(1,Math.floor((box.clientWidth||320)/m.w)),ch=Math.round(cw*1.5),ratio=window.devicePixelRatio||1;
+  cv.style.width=(cw*m.w)+'px';cv.style.height=(ch*m.h)+'px';
+  cv.width=cw*m.w*ratio;cv.height=ch*m.h*ratio;
+  var ctx=cv.getContext&&cv.getContext('2d');
+  if(!ctx)return;
+  ctx.setTransform(ratio,0,0,ratio,0,0);
+  minimapCells(m).forEach(function(k){
+    ctx.globalAlpha=k.seen?1:0.4;ctx.fillStyle=k.col;ctx.fillRect(k.x*cw,k.y*ch,cw,ch);
+  });
+  ctx.globalAlpha=1;
+  // the player, drawn over everything and ringed so they can always be found at a glance
+  if(m.px>=0&&m.py>=0){
+    ctx.fillStyle=PAL.Y;ctx.fillRect(m.px*cw,m.py*ch,cw,ch);
+    ctx.strokeStyle=PAL.W;ctx.lineWidth=1;ctx.strokeRect(m.px*cw-1.5,m.py*ch-1.5,cw+3,ch+3);
+  }
+}
+
+function renderNearby(d){
+  var n=d.nearby;
+  if(n===null||n===undefined){$('near').innerHTML=empty('Nearby objects unavailable in this game version.');return;}
+  var shown=n.filter(function(x){
+    if(opts.nearTakeable)return x.kind==='item';
+    if(x.kind==='plant')return opts.nearPlants;
+    if(x.kind==='liquid')return opts.nearLiquids;
+    return true;
+  });
+  if(!shown.length){$('near').innerHTML=empty(n.length?'Nothing nearby matches the filters in Options.':'Nothing of note nearby.');return;}
+  $('near').innerHTML=shown.map(function(x){
+    var mark='<span class="mark" style="color:'+(PAL[x.col]||PAL.y)+'">\u25A0</span>';
+    return row(mark+qud(x.name),'<span class="dist">'+(x.distance===0?'here':where(x))+'</span>','near '+esc(x.kind));
+  }).join('');
+}
+
 function renderMessages(d){
   var m=d.messages;
   if(m===null||m===undefined){$('msgs').innerHTML=empty('Message log unavailable in this game version.');return;}
@@ -574,7 +647,7 @@ function renderSurvival(d){
 
 var lastPayload=null;
 var PARTS=[['Header',renderHead],['Pressing matters',renderWarn],['Effects',renderEffects],
-  ['Abilities',renderAbilities],['Hostiles',renderFoes],['Companions',renderCompanions],['Messages',renderMessages],['Gear',renderGear],
+  ['Abilities',renderAbilities],['Hostiles',renderFoes],['Companions',renderCompanions],['Minimap',renderMinimap],['Nearby objects',renderNearby],['Messages',renderMessages],['Gear',renderGear],
   ['Attributes',renderAttrs],['Combat',renderCombat],['Survival',renderSurvival]];
 // A panel a game update has broken would otherwise fail silently on every payload. Logging it
 // each time floods the console and holds every Error alive, so each distinct fault is reported
@@ -705,6 +778,9 @@ function refreshCols(){
 }
 refreshCols();
 window.addEventListener('resize',refreshCols);
+// The map is sized to its panel, so it is redrawn whenever that panel's width can have changed.
+function redrawMap(){if(lastPayload)try{renderMinimap(lastPayload.data||{});}catch(e){}}
+window.addEventListener('resize',redrawMap);
 
 function settle(p){p.classList.remove('moved');void p.offsetWidth;p.classList.add('moved');}
 
@@ -799,6 +875,7 @@ function syncPanels(){
     t.setAttribute('aria-checked',on);t.textContent=on?'[X]':'[ ]';
   });
   refreshCols();
+  redrawMap();
 }
 function setPanelHidden(id,hide){
   if(hide)hiddenPanels[id]=1;else delete hiddenPanels[id];
@@ -882,7 +959,7 @@ $('foes').addEventListener('click',function(e){
   if(t&&t.classList&&t.classList.contains('sortbtn'))setFoeSort(t.getAttribute('data-mode'));
 });
 
-window.__qudhud={qud:qud,render:render};
+window.__qudhud={qud:qud,render:render,unrle:unrle,minimapCells:minimapCells};
 
 // Every poll compiles a script, and V8 keeps several KB of bookkeeping per compile for as long as
 // the document lives - unreachable but never collected - so a long session grows without bound.

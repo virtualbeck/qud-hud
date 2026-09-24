@@ -30,7 +30,9 @@ were never released still reach people who download the zip.
 --check finds a C# compiler (on Windows the .NET Framework one, which is always
 there) and the game's Managed folder (through Steam, or QUD_MANAGED, or PATH), then
 compiles the built mod against the game's own DLLs and reports errors by line in
-src/QudHUD.template.cs. Combine it with --install to install only what compiles.
+src/QudHUD.template.cs. Combine it with --install to install only what compiles. It
+then compiles tests/probe/GameApi.cs, which names every member the mod reaches only
+by reflection, and reports which of them this build of the game has.
 
 Releasing, in order:
   1. bump VERSION, add its CHANGELOG section
@@ -306,6 +308,56 @@ def template_line(built_line, page_start, page_newlines):
     return built_line - page_newlines
 
 
+def probe_report(output, source_lines):
+    """Which labelled lines of the API probe failed. Returns (held, total, missing, unchecked, broken).
+
+    A missing type does not make the lines that use it fail, the compiler only reports the type, so
+    those lines count as unchecked rather than as held.
+    """
+    labels = {}
+    for n, line in enumerate(source_lines, 1):
+        m = re.search(r"// probe: (.+?)\s*$", line)
+        if m:
+            labels[n] = m.group(1)
+    failed = {int(n) for n in re.findall(r"GameApi\.cs\((\d+),\d+\): error", output)}
+    missing_types = {labels[n][5:] for n in failed if n in labels and labels[n].startswith("type ")}
+    missing, unchecked = [], []
+    for n in sorted(labels):
+        label = labels[n]
+        if label.startswith("type "):
+            if n in failed:
+                missing.append(label)
+            continue
+        if label.split(".")[0] in missing_types:
+            unchecked.append(label)
+        elif n in failed:
+            missing.append(label)
+    members = [l for l in labels.values() if not l.startswith("type ")]
+    held = len(members) - len([m for m in missing if not m.startswith("type ")]) - len(unchecked)
+    broken = [m for m in missing + unchecked if "known good" in m]
+    return held, len(members), missing, unchecked, broken
+
+
+def probe(compiler, references):
+    """Compile the API probe against the game, reporting which of the mod's guesses hold."""
+    src = ROOT / "tests" / "probe" / "GameApi.cs"
+    if not src.exists():
+        return
+    out = DIST / "check" / "GameApi.dll"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    if out.exists():
+        out.unlink()
+    _, output = compile_cs(compiler, src, references, out)
+    held, total, missing, unchecked, broken = probe_report(output, src.read_text(encoding="utf-8").splitlines())
+    print(f"  game API: {held} of {total} of the mod's guesses hold against this build")
+    if missing:
+        print("    not found: " + ", ".join(missing))
+    if unchecked:
+        print("    not checked, since their type was not found: " + ", ".join(unchecked))
+    if broken:
+        print("    some of those have worked in game before, so the probe itself may be at fault")
+
+
 def check(managed):
     """Compile the built mod against the game's own DLLs, so a mistake fails here, not at load."""
     compiler, kind = find_compiler()
@@ -342,6 +394,8 @@ def check(managed):
             print(output.strip())
         sys.exit("The mod does not compile against this copy of the game.")
     print("  compiles cleanly")
+    # informational: a wrong guess leaves a panel saying "unavailable" rather than breaking the mod
+    probe(compiler, sorted(managed.glob("*.dll")))
 
 
 def run_tests():

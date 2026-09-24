@@ -340,6 +340,42 @@ class LineMapping(unittest.TestCase):
         self.assertEqual(b.template_line(153 + 870 + 5, 153, 870), 158)
 
 
+class ProbeReport(unittest.TestCase):
+    """Reading the compiler's output back into which guesses hold, without needing a compiler."""
+    SOURCE = [
+        "static void Probe(",
+        "    XRL.World.Zone z,        // probe: type Zone",
+        "    XRL.World.Parts.Brain b) // probe: type Brain",
+        "{",
+        "    v = z.Width;             // probe: Zone.Width",
+        "    v = z.Depth;             // probe: Zone.Depth",
+        "    v = b.PartyLeader;       // probe: Brain.PartyLeader",
+        "    v = z.Height;            // probe: Zone.Height (known good)",
+        "}",
+    ]
+
+    def report(self, *failing):
+        out = "\n".join(f"C:\\x\\tests\\probe\\GameApi.cs({n},9): error CS1061: nope" for n in failing)
+        return b.probe_report(out, self.SOURCE)
+
+    def test_everything_holds(self):
+        self.assertEqual(self.report()[:4], (4, 4, [], []))
+
+    def test_a_missing_member(self):
+        held, total, missing, unchecked, broken = self.report(6)
+        self.assertEqual((held, total, missing, unchecked, broken), (3, 4, ["Zone.Depth"], [], []))
+
+    def test_a_missing_type_leaves_its_members_unchecked_not_held(self):
+        # the compiler reports only the type, so its members must not be counted as holding
+        held, total, missing, unchecked, broken = self.report(3)
+        self.assertEqual(missing, ["type Brain"])
+        self.assertEqual(unchecked, ["Brain.PartyLeader"])
+        self.assertEqual(held, 3)
+
+    def test_a_known_good_failure_flags_the_probe(self):
+        self.assertEqual(self.report(8)[4], ["Zone.Height (known good)"])
+
+
 def corelib(compiler, kind):
     """The standard library DLLs that go with this compiler."""
     if kind == "dotnet":
@@ -396,18 +432,18 @@ class CSharp(Temp):
                                   sorted(self.managed.glob("*.dll")), self.tmp / "v5.dll", extra)
         self.assertTrue(ok, output)
 
-    def test_message_log_reader(self):
-        # actually runs the reader against stand-in message queues, rather than only compiling it
+    def run_harness(self, name):
+        """Compile a harness together with the mod and the stand-ins, run it, return its output."""
         dotnet = self.kind == "dotnet"
-        exe = self.tmp / ("harness.dll" if dotnet else "harness.exe")
+        exe = self.tmp / (name + (".dll" if dotnet else ".exe"))
         ok, output = b.compile_cs(
             self.compiler,
-            [REPO / "tests/stubs/Game.cs", b.DIST / "QudHUD/QudHUD.cs", REPO / "tests/stubs/MessageLogHarness.cs"],
+            [REPO / "tests/stubs/Game.cs", b.DIST / "QudHUD/QudHUD.cs", REPO / f"tests/stubs/{name}.cs"],
             self.refs, exe, ["-langversion:5"] if dotnet else [], target="exe")
         self.assertTrue(ok, output)
         if dotnet:
             tfm = self.refs[0].parent.name  # e.g. net8.0
-            (self.tmp / "harness.runtimeconfig.json").write_text(json.dumps({"runtimeOptions": {
+            (self.tmp / f"{name}.runtimeconfig.json").write_text(json.dumps({"runtimeOptions": {
                 "tfm": tfm, "framework": {"name": "Microsoft.NETCore.App", "version": tfm[3:] + ".0"}}}))
             run = [self.compiler[0], "exec", str(exe)]
         else:
@@ -415,6 +451,37 @@ class CSharp(Temp):
         r = subprocess.run(run, capture_output=True, text=True)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn("all green", r.stdout)
+        return r.stdout
+
+    def test_message_log_reader(self):
+        # actually runs the reader against stand-in message queues, rather than only compiling it
+        self.run_harness("MessageLogHarness")
+
+    def test_zone_scan(self):
+        # the minimap and nearby objects: what the character knows, what is listed, memory, cost
+        out = self.run_harness("SurroundingsHarness")
+        for line in out.splitlines():
+            if line.startswith("INFO"):
+                print("\n    " + line[6:], end="")
+
+    def test_api_probe_names_exactly_the_wrong_guesses(self):
+        # a fake game with three deliberate gaps, see tests/stubs/ProbeGame.cs
+        game = self.tmp / "ProbeManaged"
+        game.mkdir()
+        for dll in self.refs:
+            shutil.copy(dll, game)
+        ok, out = b.compile_cs(self.compiler, REPO / "tests/stubs/ProbeGame.cs", self.refs, game / "Assembly-CSharp.dll")
+        self.assertTrue(ok, out)
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            b.probe(self.compiler, sorted(game.glob("*.dll")))
+        report = output.getvalue()
+        self.assertIn("not found: type Brain, Cell.IsExplored(), GameObject.IsLedBy(GameObject)", report)
+        self.assertIn("not checked, since their type was not found: Brain.PartyLeader", report)
+        self.assertNotIn("probe itself may be at fault", report)
+        total = len([l for l in (REPO / "tests/probe/GameApi.cs").read_text().splitlines()
+                     if "// probe:" in l and "probe: type" not in l])
+        self.assertIn(f"{total - 3} of {total}", report)
 
     def test_an_error_is_reported_at_its_template_line(self):
         needle = "Perception.SelfExact(p)"

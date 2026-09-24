@@ -36,7 +36,8 @@ Full instructions are in [mod/README.md](mod/README.md), which ships with the mo
 - `+` / `-` resize, `0` resets, `R` restores the default layout and unhides every panel.
 - **Hostiles in sight** has a Sort toggle: nearest first, or most dangerous first.
 - **Companions** shows your followers, by the same rules as hostiles.
-- **Messages** keeps the last dozen lines of the game's message log in view.
+- **Minimap**, **Nearby objects** and **Messages** mirror the three windows the game docks together,
+  showing only what your character knows.
 - Unspent point reminders in **Pressing matters** can be dismissed with the `×` beside them, until
   the number changes.
 - **Options** can also hide abilities that are simply ready.
@@ -68,6 +69,10 @@ python build.py --check      # compile the mod against your installed game first
 reporting errors by line in `src/QudHUD.template.cs`, so a mistake fails in seconds rather than when
 the game loads. On Windows it uses the .NET Framework compiler that every install already has.
 `python build.py --check --install` installs only what compiles.
+
+Most of what the mod reads from the game it reaches by reflection, which cannot fail to compile but
+can quietly find nothing. So `--check` also compiles `tests/probe/GameApi.cs`, one line per member
+the mod relies on that way, and reports which of them this build of the game actually has.
 
 `src/hud.html` is the display page and can be opened directly in a browser to work on the design.
 It shows a waiting screen until a `hud_data.js` sits next to it.

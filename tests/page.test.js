@@ -65,7 +65,10 @@ let BASE;
 async function load(opts={}){
   const errs=[];
   const vc=new VirtualConsole();
-  vc.on('jsdomError',e=>errs.push('jsdomError: '+e.message));
+  vc.on('jsdomError',e=>{
+    if(/Not implemented: HTMLCanvasElement/.test(e.message))return;   // jsdom has no canvas
+    errs.push('jsdomError: '+e.message);
+  });
   vc.on('error',(...a)=>errs.push('console.error: '+a.join(' ')));
   const html=fs.readFileSync(path.join(DIR,'hud.html'),'utf8');
   const dom=new JSDOM(html,{url:BASE+'/hud.html',runScripts:'dangerously',resources:'usable',
@@ -374,6 +377,105 @@ async function load(opts={}){
     check('messages: unavailable says so',/unavailable/.test(d.getElementById('msgs').textContent));
     dom.window.close();
     delete DATA.messages;
+  }
+
+  // --- the minimap: decoding, what the character knows, and a painter that survives no canvas
+  {
+    // a 6x2 zone. Row 0: wall, dagger, open ground, then three unexplored cells.
+    // Row 1: ground, ground and a wall only remembered, then three cells of open ground in view.
+    // c is "K c - [space x3]" then "w w K - - -"; v marks which cells are in view right now.
+    DATA.map={w:6,h:2,px:2,py:0,c:'Kc- 3w2K-3',v:'V3.6V3'};
+    writeData(0,1);
+    ({dom,errs,d}=await load());
+    const w=dom.window;
+    // the same literal the C# side is tested against in SurroundingsHarness.cs, so the two agree
+    check('minimap: decodes exactly what the mod encodes',w.__qudhud.unrle('k4-y 2').join('')==='kkkk-y  ');
+    check('minimap: run-length decoding',
+          w.__qudhud.unrle('K3-y12').join('')==='KKK-'+'y'.repeat(12)&&w.__qudhud.unrle('').length===0);
+    const cells=w.__qudhud.minimapCells(DATA.map);
+    const at=(x,y)=>cells.find(k=>k.x===x&&k.y===y);
+    check('minimap: unexplored cells are not painted',!at(3,0)&&!at(4,0)&&!at(5,0),JSON.stringify(cells.map(k=>k.x+','+k.y)));
+    check('minimap: a cell in view uses its object colour',at(1,0).col==='#40a4b9'&&at(1,0).seen);
+    check('minimap: open ground has its own colour',at(2,0).col==='#0e3230');
+    check('minimap: remembered cells are marked as not in view',!at(0,1).seen&&!at(2,1).seen,
+          JSON.stringify([at(0,1),at(2,1)]));
+    check('minimap: in view again after',at(3,1).seen&&at(4,1).seen&&at(5,1).seen);
+    check('minimap: a canvas is placed in the panel',!!d.querySelector('#map canvas'));
+    check('minimap: sized to the zone, cells taller than wide',
+          /px$/.test(d.querySelector('#map canvas').style.width)&&
+          parseInt(d.querySelector('#map canvas').style.height)*6>parseInt(d.querySelector('#map canvas').style.width)*2);
+    check('minimap: no errors with no canvas support',errs.length===0,errs.join(' | '));
+    dom.window.close();
+
+    DATA.map=null;
+    writeData(0,2);
+    ({dom,errs,d}=await load());
+    check('minimap: unavailable says so',/Minimap unavailable/.test(d.getElementById('map').textContent));
+    dom.window.close();
+    delete DATA.map;
+  }
+
+  // --- nearby objects, and the filters the game's own window offers
+  {
+    DATA.nearby=[
+      {name:'bronze dagger',kind:'item',col:'c',distance:0,dir:'here'},
+      {name:'dromad merchant',kind:'creature',col:'W',distance:2,dir:'E'},
+      {name:'witchwood tree',kind:'plant',col:'g',distance:3,dir:'N'},
+      {name:'pool of <b>salt</b>',kind:'liquid',col:'b',distance:4,dir:'S'},
+      {name:'{{W|chest}}',kind:'container',col:'w',distance:5,dir:'W'}];
+    writeData(0,1);
+    ({dom,errs,d}=await load());
+    let near=d.getElementById('near'),rows=near.querySelectorAll('.row');
+    check('nearby: panel is on the page',!!d.querySelector('[data-panel=near]'));
+    check('nearby: everything listed by default',rows.length===5,rows.length+' rows');
+    check('nearby: something underfoot reads "here"',/^here/.test(rows[0].querySelector('.dist').textContent),
+          rows[0].querySelector('.dist').textContent);
+    check('nearby: distance and direction otherwise',/2 away/.test(rows[1].textContent)&&/→/.test(rows[1].textContent));
+    check('nearby: each carries its colour mark',
+          /#40a4b9/.test(rows[0].querySelector('.mark').getAttribute('style')));
+    check('nearby: names keep game colours',/<span style="color:/.test(rows[4].innerHTML)&&!/\{\{/.test(near.textContent));
+    check('nearby: a name is shown as text, never markup',
+          near.querySelectorAll('b').length===0&&/<b>salt<\/b>/.test(near.textContent));
+    check('nearby: no errors',errs.length===0,errs.join(' | '));
+    // the takeable-only filter, switched on from Options
+    d.querySelector('.tog[data-opt=nearTakeable]').click();
+    rows=d.getElementById('near').querySelectorAll('.row');
+    check('nearby: takeable only leaves just the items',rows.length===1&&/bronze dagger/.test(rows[0].textContent),rows.length+' rows');
+    dom.window.close();
+
+    ({dom,errs,d}=await load({store:{'qudhud.opts':JSON.stringify({nearPlants:false,nearLiquids:false})}}));
+    near=d.getElementById('near');
+    check('nearby: plants and pools can be hidden',
+          !/witchwood/.test(near.textContent)&&!/salt/.test(near.textContent)&&/merchant/.test(near.textContent));
+    dom.window.close();
+
+    DATA.nearby=[{name:'witchwood tree',kind:'plant',col:'g',distance:3,dir:'N'}];
+    writeData(0,2);
+    ({dom,errs,d}=await load({store:{'qudhud.opts':JSON.stringify({nearPlants:false})}}));
+    check('nearby: filtered to nothing says why',/matches the filters/.test(d.getElementById('near').textContent));
+    dom.window.close();
+
+    DATA.nearby=[];
+    writeData(0,3);
+    ({dom,errs,d}=await load());
+    check('nearby: nothing says so',/Nothing of note nearby/.test(d.getElementById('near').textContent));
+    dom.window.close();
+
+    DATA.nearby=null;
+    writeData(0,4);
+    ({dom,errs,d}=await load());
+    check('nearby: unavailable says so',/unavailable/.test(d.getElementById('near').textContent));
+    dom.window.close();
+    delete DATA.nearby;
+  }
+
+  // --- the three windows the game docks together share a column
+  {
+    writeData(0,1);
+    ({dom,errs,d}=await load());
+    const c3=[].slice.call(d.querySelectorAll('[data-zone=c3] > .panel')).map(n=>n.dataset.panel).join();
+    check('layout: minimap, nearby and messages share the third column',c3==='map,near,msgs',c3);
+    dom.window.close();
   }
 
   // --- dismissable reminders in Pressing matters

@@ -7,7 +7,9 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Linq.Expressions;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Text;
 using XRL;
 using XRL.World;
@@ -233,6 +235,7 @@ namespace QudHUD
             Section("hostiles", () => BuildHostiles(p, d, alerts));
             Section("companions", () => BuildCompanions(p, d));
             Section("messages", () => d["messages"] = MessageLog.Recent(12));
+            Section("surroundings", () => Surroundings.Build(p, d));
 
             alerts.Sort((a, b) => ((int)b["sev"]).CompareTo((int)a["sev"]));
             var list = new List<object>();
@@ -653,7 +656,7 @@ namespace QudHUD
 
         // 8-way compass direction from p to o, or "here" for the same tile. Null if positions
         // aren't available. hud.html maps this to an arrow glyph.
-        static string Direction(GameObject p, object o)
+        internal static string Direction(GameObject p, object o)
         {
             object pc = R.Get(p, "CurrentCell"), oc = R.Get(o, "CurrentCell");
             if (pc == null || oc == null) return null;
@@ -696,7 +699,22 @@ namespace QudHUD
         // Anyone following the player, directly or through another follower. There is no published
         // API, so this asks the likeliest calls in turn; none answering means no companions, and the
         // panel simply says so rather than guessing.
-        static bool IsCompanion(object o, GameObject p)
+        // A creature can linger in the zone's Brain list after death (seen with holograms); treat 0 or
+        // below as dead regardless of why it was not removed.
+        internal static bool IsDead(object o)
+        {
+            object hp = SVOrNull(o, "Hitpoints");
+            return hp != null && (int)hp <= 0;
+        }
+
+        internal static bool IsHostile(object o, GameObject p)
+        {
+            object hostile = R.Call(o, "IsHostileTowards", p);
+            if (hostile == null) hostile = R.Call(R.Call(o, "GetPart", "Brain"), "IsHostileTowards", p);
+            return R.Bool(hostile);
+        }
+
+        internal static bool IsCompanion(object o, GameObject p)
         {
             object led = R.Call(o, "IsPlayerLed");
             if (led is bool) return (bool)led;
@@ -714,9 +732,7 @@ namespace QudHUD
             var found = new List<Dictionary<string, object>>();
             foreach (object o in objs)
             {
-                if (o == null || ReferenceEquals(o, p) || !IsCompanion(o, p)) continue;
-                object hpVal = SVOrNull(o, "Hitpoints");
-                if (hpVal != null && (int)hpVal <= 0) continue;
+                if (o == null || ReferenceEquals(o, p) || IsDead(o) || !IsCompanion(o, p)) continue;
                 var entry = new Dictionary<string, object> { { "name", Name(o) }, { "level", SV(o, "Level") } };
                 // Out of sight, you know they exist but not where they are or how they are doing.
                 bool seen = CurrentlyVisible(o);
@@ -752,14 +768,7 @@ namespace QudHUD
             var found = new List<Dictionary<string, object>>();
             foreach (object o in objs)
             {
-                if (o == null || ReferenceEquals(o, p)) continue;
-                // A creature can linger in the zone's Brain list after death (seen with holograms);
-                // treat 0-or-below Hitpoints as dead regardless of why it wasn't removed.
-                object hpVal = SVOrNull(o, "Hitpoints");
-                if (hpVal != null && (int)hpVal <= 0) continue;
-                object hostile = R.Call(o, "IsHostileTowards", p);
-                if (hostile == null) hostile = R.Call(R.Call(o, "GetPart", "Brain"), "IsHostileTowards", p);
-                if (!R.Bool(hostile)) continue;
+                if (o == null || ReferenceEquals(o, p) || IsDead(o) || !IsHostile(o, p)) continue;
                 if (!CurrentlyVisible(o)) continue;
                 int hp = SV(o, "Hitpoints"), hpMax = SB(o, "Hitpoints");
                 var entry = new Dictionary<string, object> {
@@ -957,6 +966,319 @@ namespace QudHUD
                 if (scanning == null) UnityEngine.Debug.LogWarning("[QudHUD] no Scanning capability found; hostiles will show health words only.");
             }
             return R.Bool(R.SCallT(scanning, "HasScanningFor", player, target));
+        }
+    }
+
+    // Compiled accessors for the zone scan's hot path, which touches every cell and every object in view
+    // each turn. Plain reflection made a full lit zone cost about 30ms a scan, measured in
+    // tests/stubs/SurroundingsHarness.cs. Each accessor is compiled once per type and member; where
+    // compiling fails, or no exact match exists, it falls back to the ordinary reflection in R.
+    static class Fast
+    {
+        const BindingFlags Inst = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
+        static readonly Dictionary<Type, Dictionary<string, Func<object, object>>> getters =
+            new Dictionary<Type, Dictionary<string, Func<object, object>>>();
+        static readonly Dictionary<Type, Dictionary<string, Func<object, object>>> calls0 =
+            new Dictionary<Type, Dictionary<string, Func<object, object>>>();
+        static readonly Dictionary<Type, Dictionary<string, Func<object, object, object>>> calls1 =
+            new Dictionary<Type, Dictionary<string, Func<object, object, object>>>();
+
+        public static object Get(object o, string name)
+        {
+            if (o == null) return null;
+            Func<object, object> f = Cached(getters, o.GetType(), name, MakeGetter);
+            return f == null ? null : f(o);
+        }
+
+        public static object Call(object o, string name)
+        {
+            if (o == null) return null;
+            return Cached(calls0, o.GetType(), name, MakeCall0)(o);
+        }
+
+        public static object Call(object o, string name, string arg)
+        {
+            if (o == null) return null;
+            return Cached(calls1, o.GetType(), name, MakeCall1)(o, arg);
+        }
+
+        static T Cached<T>(Dictionary<Type, Dictionary<string, T>> cache, Type t, string name, Func<Type, string, T> make)
+        {
+            Dictionary<string, T> byName;
+            if (!cache.TryGetValue(t, out byName)) cache[t] = byName = new Dictionary<string, T>();
+            T f;
+            if (!byName.TryGetValue(name, out f)) byName[name] = f = make(t, name);
+            return f;
+        }
+
+        static Func<object, object> MakeGetter(Type t, string name)
+        {
+            MemberInfo m = null;
+            for (Type c = t; c != null && m == null; c = c.BaseType)
+            {
+                m = c.GetField(name, Inst | BindingFlags.DeclaredOnly);
+                if (m == null)
+                {
+                    PropertyInfo pi = c.GetProperty(name, Inst | BindingFlags.DeclaredOnly);
+                    if (pi != null && pi.CanRead && pi.GetIndexParameters().Length == 0) m = pi;
+                }
+            }
+            if (m == null) return null;
+            try
+            {
+                var o = Expression.Parameter(typeof(object), "o");
+                Expression access = Expression.MakeMemberAccess(Expression.Convert(o, m.DeclaringType), m);
+                return Expression.Lambda<Func<object, object>>(Expression.Convert(access, typeof(object)), o).Compile();
+            }
+            catch
+            {
+                return x => R.Get(x, name);
+            }
+        }
+
+        static Func<object, object> MakeCall0(Type t, string name)
+        {
+            MethodInfo mi = t.GetMethod(name, Inst, null, Type.EmptyTypes, null);
+            if (mi != null && mi.ReturnType != typeof(void))
+            {
+                try
+                {
+                    var o = Expression.Parameter(typeof(object), "o");
+                    Expression call = Expression.Call(Expression.Convert(o, mi.DeclaringType), mi);
+                    return Expression.Lambda<Func<object, object>>(Expression.Convert(call, typeof(object)), o).Compile();
+                }
+                catch { }
+            }
+            return x => R.Call(x, name);
+        }
+
+        static Func<object, object, object> MakeCall1(Type t, string name)
+        {
+            MethodInfo mi = t.GetMethod(name, Inst, null, new[] { typeof(string) }, null);
+            if (mi != null && mi.ReturnType != typeof(void))
+            {
+                try
+                {
+                    var o = Expression.Parameter(typeof(object), "o");
+                    var a = Expression.Parameter(typeof(object), "a");
+                    Expression call = Expression.Call(Expression.Convert(o, mi.DeclaringType), mi, Expression.Convert(a, typeof(string)));
+                    return Expression.Lambda<Func<object, object, object>>(Expression.Convert(call, typeof(object)), o, a).Compile();
+                }
+                catch { }
+            }
+            return (x, a) => R.Call(x, name, a);
+        }
+    }
+
+    // What is around the player, as the game's own minimap and nearby objects window show it. One pass
+    // over the zone feeds both. Every lookup goes through reflection and fails soft, and
+    // `build.py --check` compiles tests/probe/GameApi.cs against the real game to say which of these
+    // guesses hold.
+    //
+    // The map shows only what the character knows: nothing for unexplored cells, the current view for
+    // visible ones, and for cells explored but out of sight what they looked like when last seen, with
+    // no creatures. That memory is also what keeps the scan cheap, since out-of-sight cells need no
+    // looking at.
+    static class Surroundings
+    {
+        const string Palette = "kKrRgGbBcCmMwWyYoO";
+        const int NearbyMax = 20;
+
+        // What never changes about an object: its render part, whether it is a creature, and what kind
+        // of nearby thing it is, if any. Held weakly, so the cache cannot keep a destroyed object (a
+        // spent gas cloud, a projectile) alive.
+        class Info { public object Render; public bool Creature; public string Kind; }
+        struct Candidate { public object O; public Info Info; public char Col; public int Dist; }
+        static readonly ConditionalWeakTable<object, Info> infos = new ConditionalWeakTable<object, Info>();
+
+        static object zone;          // the zone everything below belongs to
+        static int width, height;
+        static object[] cells;
+        static bool[] explored;      // once explored always explored, so never asked about again
+        static char[] remembered;    // each cell as last seen, creatures left out
+        static DateTime lastScan = DateTime.MinValue;
+        static double gapMs = 150;
+        static string mapCells, mapSeen;
+        static List<object> nearby;
+
+        public static void Build(GameObject p, Dictionary<string, object> d)
+        {
+            object z = R.Get(p, "CurrentZone"), here = R.Get(p, "CurrentCell");
+            if (z == null || here == null) { d["map"] = null; d["nearby"] = null; return; }
+            int px = R.Int(R.Get(here, "X"), -1), py = R.Int(R.Get(here, "Y"), -1);
+
+            // The turn hooks fire within milliseconds of each other and a scan is the costliest thing
+            // the mod does, so one taken moments ago is reused. The gap stretches if scans turn out
+            // slow, so a large lit zone cannot eat into the game's own frame time.
+            DateTime now = DateTime.UtcNow;
+            if (!ReferenceEquals(z, zone) || mapCells == null || (now - lastScan).TotalMilliseconds >= gapMs)
+            {
+                Scan(p, z, px, py);
+                DateTime done = DateTime.UtcNow;
+                gapMs = Math.Max(150, (done - now).TotalMilliseconds * 4);
+                lastScan = done;
+            }
+
+            d["nearby"] = nearby;
+            if (mapCells == null) { d["map"] = null; return; }
+            d["map"] = new Dictionary<string, object> {
+                { "w", width }, { "h", height }, { "px", px }, { "py", py }, { "c", mapCells }, { "v", mapSeen }
+            };
+        }
+
+        static void Scan(GameObject p, object z, int px, int py)
+        {
+            if (!ReferenceEquals(z, zone))
+            {
+                zone = z;
+                width = R.Int(R.Get(z, "Width"), 80);
+                height = R.Int(R.Get(z, "Height"), 25);
+                cells = new object[width * height];
+                explored = new bool[cells.Length];
+                remembered = new char[cells.Length];
+                for (int y = 0; y < height; y++)
+                    for (int x = 0; x < width; x++)
+                        cells[y * width + x] = R.Call(z, "GetCell", x, y);
+            }
+
+            var c = new StringBuilder(cells.Length);
+            var v = new StringBuilder(cells.Length);
+            var found = new List<Candidate>();
+            bool any = false;
+            for (int i = 0; i < cells.Length; i++)
+            {
+                object cell = cells[i];
+                char top = ' ', ground;
+                bool visible = false;
+                if (cell != null)
+                {
+                    any = true;
+                    visible = R.Bool(Fast.Call(cell, "IsVisible"));
+                    // anything in view is explored, even if the game's own flag cannot be read
+                    if (visible) explored[i] = true;
+                    else if (!explored[i]) explored[i] = Explored(cell);
+                }
+                if (visible)
+                {
+                    int dist = Math.Max(Math.Abs(i % width - px), Math.Abs(i / width - py));
+                    Look(p, cell, found, dist, out top, out ground);
+                    remembered[i] = ground;
+                }
+                else if (explored[i])
+                {
+                    // explored before this session, so never seen by the mod: remember it now
+                    if (remembered[i] == '\0') { Look(p, cell, null, 0, out top, out ground); remembered[i] = ground; }
+                    top = remembered[i];
+                }
+                c.Append(top);
+                v.Append(visible ? 'V' : '.');
+            }
+
+            if (!any) { mapCells = mapSeen = null; nearby = null; return; }
+            mapCells = Rle(c);
+            mapSeen = Rle(v);
+            nearby = Nearest(p, found);
+        }
+
+        // Nearest first. Only now are creatures checked for being dead, hostile or a companion, and only
+        // until the list is full, since those checks are the expensive ones.
+        static List<object> Nearest(GameObject p, List<Candidate> found)
+        {
+            found.Sort((a, b) => a.Dist.CompareTo(b.Dist));
+            var list = new List<object>();
+            foreach (Candidate f in found)
+            {
+                if (list.Count >= NearbyMax) break;
+                if (f.Info.Creature && (Snapshot.IsDead(f.O) || Snapshot.IsHostile(f.O, p) || Snapshot.IsCompanion(f.O, p)))
+                    continue;
+                list.Add(new Dictionary<string, object> {
+                    { "name", Snapshot.Name(f.O) },
+                    { "kind", f.Info.Creature ? "creature" : f.Info.Kind },
+                    { "col", f.Col.ToString() },
+                    { "distance", R.Int(R.Call(p, "DistanceTo", f.O), f.Dist) },
+                    { "dir", Snapshot.Direction(p, f.O) }
+                });
+            }
+            return list;
+        }
+
+        static bool Explored(object cell)
+        {
+            object e = Fast.Call(cell, "IsExplored");
+            if (e is bool) return (bool)e;
+            return R.Bool(Fast.Get(cell, "Explored"));
+        }
+
+        static Info About(object o)
+        {
+            Info info;
+            if (infos.TryGetValue(o, out info)) return info;
+            info = new Info { Render = Fast.Call(o, "GetPart", "Render"), Creature = Fast.Call(o, "GetPart", "Brain") != null };
+            if (!info.Creature) info.Kind = Kind(o);
+            infos.Add(o, info);
+            return info;
+        }
+
+        // The kinds of thing the game's nearby list shows, besides creatures. Walls, floors and the like
+        // are scenery and come back as null.
+        static string Kind(object o)
+        {
+            if (R.Bool(Fast.Call(o, "HasPart", "StairsUp")) || R.Bool(Fast.Call(o, "HasPart", "StairsDown"))) return "stairs";
+            if (R.Bool(Fast.Call(o, "IsTakeable"))) return "item";
+            if (Fast.Call(o, "GetPart", "LiquidVolume") != null) return "liquid";
+            if (R.Bool(Fast.Call(o, "HasTag", "Plant"))) return "plant";
+            if (Fast.Call(o, "GetPart", "Inventory") != null) return "container";
+            return null;
+        }
+
+        // The colour on top of a cell, and the one with creatures left out, which is what gets
+        // remembered. Collects anything worth listing as nearby when given somewhere to put it.
+        static void Look(GameObject p, object cell, List<Candidate> found, int dist, out char top, out char ground)
+        {
+            top = ground = '-';
+            int topLayer = int.MinValue, groundLayer = int.MinValue;
+            IEnumerable objs = Fast.Get(cell, "Objects") as IEnumerable;
+            if (objs == null) return;
+            foreach (object o in objs)
+            {
+                if (o == null) continue;
+                Info info = About(o);
+                if (info.Render == null) continue;
+                object shown = Fast.Get(info.Render, "Visible");
+                if (shown is bool && !(bool)shown) continue;
+                int layer = R.Int(Fast.Get(info.Render, "RenderLayer"), 0);
+                char col = Colour(R.Str(Fast.Get(info.Render, "ColorString")));
+                if (layer >= topLayer) { topLayer = layer; top = col; }
+                if (!info.Creature && layer >= groundLayer) { groundLayer = layer; ground = col; }
+                if (found != null && !ReferenceEquals(o, p) && (info.Creature || info.Kind != null))
+                    found.Add(new Candidate { O = o, Info = info, Col = col, Dist = dist });
+            }
+        }
+
+        // The foreground colour in a string such as "&y" or "&G^k", as one palette letter.
+        internal static char Colour(string s)
+        {
+            if (s != null)
+                for (int i = 0; i + 1 < s.Length; i++)
+                    if (s[i] == '&' && Palette.IndexOf(s[i + 1]) >= 0) return s[i + 1];
+            return 'y';
+        }
+
+        // Run-length encoding: each symbol, then how many times it repeats when that is more than once.
+        // Symbols are never digits, so the counts read back unambiguously. A zone is mostly long runs
+        // of wall, ground and unexplored, which is what keeps the map small enough to send every turn.
+        internal static string Rle(StringBuilder s)
+        {
+            var o = new StringBuilder();
+            for (int i = 0; i < s.Length; )
+            {
+                int j = i + 1;
+                while (j < s.Length && s[j] == s[i]) j++;
+                o.Append(s[i]);
+                if (j - i > 1) o.Append(j - i);
+                i = j;
+            }
+            return o.ToString();
         }
     }
 
