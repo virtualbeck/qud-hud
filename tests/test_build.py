@@ -327,6 +327,88 @@ class Build(Temp):
         self.assertEqual(unbalanced_braces((REPO / "src/QudHUD.template.cs").read_text(encoding="utf-8")), 0)
 
 
+class LineMapping(unittest.TestCase):
+    # the built mod holds the page as many lines where the template holds it as one
+
+    def test_before_the_page_is_unchanged(self):
+        self.assertEqual(b.template_line(40, 153, 870), 40)
+
+    def test_inside_the_page_is_reported_as_the_page(self):
+        self.assertIsNone(b.template_line(500, 153, 870))
+
+    def test_after_the_page_is_shifted_back(self):
+        self.assertEqual(b.template_line(153 + 870 + 5, 153, 870), 158)
+
+
+def corelib(compiler, kind):
+    """The standard library DLLs that go with this compiler."""
+    if kind == "dotnet":
+        root = Path(compiler[2]).parents[4]
+        dirs = sorted(root.glob("packs/Microsoft.NETCore.App.Ref/*/ref/net*"))
+        return sorted(dirs[-1].glob("*.dll")) if dirs else []
+    here = Path(compiler[0]).parent
+    return [here / n for n in ("mscorlib.dll", "System.dll", "System.Core.dll")]
+
+
+class CSharp(Temp):
+    """Compiles the real mod against stand-ins for the game, when a C# compiler is available.
+
+    The stand-ins in tests/stubs mirror how the mod uses the game, so this proves our own code is
+    sound. Whether the game's API still matches is what `python build.py --check` is for.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.compiler, self.kind = b.find_compiler()
+        if self.kind not in ("dotnet", "framework"):
+            self.skipTest("no C# compiler with a standard library that can be located")
+        self.refs = corelib(self.compiler, self.kind)
+        if not self.refs:
+            self.skipTest("the compiler's standard library was not found")
+        self.managed = self.tmp / "Managed"
+        self.managed.mkdir()
+        for dll in self.refs:
+            shutil.copy(dll, self.managed)
+        ok, out = b.compile_cs(self.compiler, REPO / "tests/stubs/Game.cs", self.refs,
+                               self.managed / "Assembly-CSharp.dll")
+        self.assertTrue(ok, out)
+        b.DIST = self.tmp / "dist"
+        with contextlib.redirect_stdout(io.StringIO()):
+            b.build()
+
+    def check(self):
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            try:
+                b.check(self.managed)
+                return True, output.getvalue()
+            except SystemExit:
+                return False, output.getvalue()
+
+    def test_mod_compiles(self):
+        ok, output = self.check()
+        self.assertTrue(ok, output)
+
+    def test_mod_is_valid_csharp_5(self):
+        # the compiler every Windows install already has stops at C# 5, and --check relies on it
+        extra = ["-langversion:5"] if self.kind == "dotnet" else []
+        ok, output = b.compile_cs(self.compiler, b.DIST / "QudHUD/QudHUD.cs",
+                                  sorted(self.managed.glob("*.dll")), self.tmp / "v5.dll", extra)
+        self.assertTrue(ok, output)
+
+    def test_an_error_is_reported_at_its_template_line(self):
+        needle = "Perception.SelfExact(p)"
+        template = (REPO / "src/QudHUD.template.cs").read_text(encoding="utf-8").splitlines()
+        line = next(i for i, l in enumerate(template, 1) if needle in l)
+        built = b.DIST / "QudHUD/QudHUD.cs"
+        built.write_text(built.read_text(encoding="utf-8").replace(needle, "Perception.SelfExcat(p)"),
+                         encoding="utf-8")
+        ok, output = self.check()
+        self.assertFalse(ok)
+        self.assertIn(f"src/QudHUD.template.cs({line},", output)
+        self.assertIn("SelfExcat", output)
+
+
 class Text(unittest.TestCase):
 
     def test_no_long_dashes(self):

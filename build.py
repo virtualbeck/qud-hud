@@ -6,6 +6,8 @@
   python build.py --install PATH     copy into PATH instead
   python build.py --uninstall        remove the mod from your Caves of Qud Mods folder
   python build.py --uninstall PATH   remove it from PATH instead
+  python build.py --check            compile the mod against your installed game, before installing it
+  python build.py --check PATH       the same, given the game's Managed folder
   python build.py --workshop         build, then publish dist/QudHUD to the Steam Workshop via SteamCMD
   python build.py --release          build, tag vX.Y.Z, and publish a GitHub release with the zip
   python build.py --release --yes    the same without the confirmation prompt
@@ -25,9 +27,14 @@ version with no CHANGELOG section, or when the tag already exists. Release
 notes cover every CHANGELOG section since the previous tag, so versions that
 were never released still reach people who download the zip.
 
+--check finds a C# compiler (on Windows the .NET Framework one, which is always
+there) and the game's Managed folder (through Steam, or QUD_MANAGED, or PATH), then
+compiles the built mod against the game's own DLLs and reports errors by line in
+src/QudHUD.template.cs. Combine it with --install to install only what compiles.
+
 Releasing, in order:
   1. bump VERSION, add its CHANGELOG section
-  2. --install, test in game, repeat; --uninstall when done
+  2. --check --install, test in game, repeat; --uninstall when done
   3. commit and push, since --release refuses to run on a dirty tree
   4. --release   tags, pushes the tag, publishes the zip on GitHub
   5. --workshop  pushes the same build to Steam
@@ -224,6 +231,117 @@ Found a bug? Please [open an issue]({repo}/issues).
 """
 
 
+def find_compiler():
+    """A C# compiler as (command, kind), or (None, None).
+
+    The .NET Framework one is on every Windows machine and handles the C# 5 the mod is written in,
+    so on Windows this normally needs nothing installed.
+    """
+    exe = shutil.which("csc")
+    if exe:
+        return [exe], "csc"
+    dotnet = shutil.which("dotnet")
+    if dotnet:
+        sdks = subprocess.run([dotnet, "--list-sdks"], capture_output=True, text=True).stdout
+        for line in reversed(sdks.splitlines()):
+            m = re.match(r"(\S+) \[(.+)\]", line.strip())
+            csc = m and Path(m.group(2)) / m.group(1) / "Roslyn" / "bincore" / "csc.dll"
+            if csc and csc.exists():
+                return [dotnet, "exec", str(csc)], "dotnet"
+    windir = os.environ.get("WINDIR")
+    if windir:
+        for fw in ("Framework64", "Framework"):
+            exe = Path(windir) / "Microsoft.NET" / fw / "v4.0.30319" / "csc.exe"
+            if exe.exists():
+                return [str(exe)], "framework"
+    exe = shutil.which("mcs")
+    if exe:
+        return [exe], "mcs"
+    return None, None
+
+
+def find_managed():
+    """The game's Managed folder, where Assembly-CSharp.dll lives, or None."""
+    if os.environ.get("QUD_MANAGED"):
+        return Path(os.environ["QUD_MANAGED"])
+    home = Path.home()
+    roots = [Path(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")) / "Steam",
+             home / ".steam/steam", home / ".local/share/Steam",
+             home / "Library/Application Support/Steam"]
+    libraries = list(roots)
+    for root in roots:
+        vdf = root / "steamapps" / "libraryfolders.vdf"
+        if vdf.exists():
+            for p in re.findall(r'"path"\s+"([^"]+)"', vdf.read_text(encoding="utf-8", errors="ignore")):
+                libraries.append(Path(p.replace("\\\\", "\\")))
+    for lib in libraries:
+        game = lib / "steamapps" / "common" / "Caves of Qud"
+        # the data folder is named after the executable, so find it rather than assume its name
+        for managed in list(game.glob("*_Data/Managed")) + list(game.glob("*.app/Contents/Resources/Data/Managed")):
+            if (managed / "Assembly-CSharp.dll").exists():
+                return managed
+    return None
+
+
+def compile_cs(compiler, source, references, out, extra=()):
+    """Compile one file to a library against exactly these references. Returns (ok, output)."""
+    rsp = out.with_suffix(".rsp")
+    args = ["-nostdlib", "-t:library", f'-out:"{out}"', *extra]
+    args += [f'-r:"{r}"' for r in references] + [f'"{source}"']
+    rsp.write_text("\n".join(args), encoding="utf-8")
+    # -noconfig is ignored inside a response file, so it goes on the command line. The references go
+    # in the file because the game ships enough DLLs to overflow a Windows command line.
+    r = subprocess.run(compiler + ["-noconfig", f"@{rsp}"], capture_output=True, text=True)
+    return r.returncode == 0 and out.exists(), (r.stdout + r.stderr)
+
+
+def template_line(built_line, page_start, page_newlines):
+    """Map a line of the built mod back to the template, which holds the page as one short line."""
+    if built_line <= page_start:
+        return built_line
+    if built_line <= page_start + page_newlines:
+        return None  # inside the embedded page
+    return built_line - page_newlines
+
+
+def check(managed):
+    """Compile the built mod against the game's own DLLs, so a mistake fails here, not at load."""
+    compiler, kind = find_compiler()
+    if compiler is None:
+        sys.exit("No C# compiler found. On Windows the .NET Framework one is normally present; "
+                 "elsewhere install the .NET SDK or Mono.")
+    managed = Path(managed) if managed else find_managed()
+    if managed is None or not (managed / "Assembly-CSharp.dll").exists():
+        sys.exit("Couldn't find the game. Pass its Managed folder, the one holding Assembly-CSharp.dll:\n"
+                 '  python build.py --check "C:\\...\\Caves of Qud\\CoQ_Data\\Managed"')
+
+    source = DIST / MOD_ID / "QudHUD.cs"
+    out = DIST / "check" / "QudHUD.dll"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    if out.exists():
+        out.unlink()
+    print(f"Compiling against {managed} with {kind}...")
+    ok, output = compile_cs(compiler, source, sorted(managed.glob("*.dll")), out)
+
+    template = (ROOT / "src/QudHUD.template.cs").read_text(encoding="utf-8").splitlines()
+    page_start = next(i for i, l in enumerate(template, 1) if "const string HtmlPage" in l)
+    page_newlines = (ROOT / "src/hud.html").read_text(encoding="utf-8").count("\n")
+    errors = 0
+    for line in output.splitlines():
+        m = re.match(r".*?\((\d+),(\d+)\): (error|warning) (\w+): (.*)", line)
+        if not m or m.group(3) != "error":
+            continue
+        errors += 1
+        n = template_line(int(m.group(1)), page_start, page_newlines)
+        where = f"src/QudHUD.template.cs({n},{m.group(2)})" if n else "src/hud.html (embedded page)"
+        print(f"  {where}: {m.group(4)}: {m.group(5)}")
+    if not ok:
+        if not errors:
+            print(output.strip())
+        sys.exit("The mod does not compile against this copy of the game.")
+    print("  compiles cleanly")
+
+
 def run_tests():
     """The whole suite, so a release cannot go out with a failing test."""
     tests = ROOT / "tests"
@@ -323,18 +441,24 @@ def uninstall(target):
     print(f"  removed {dest}")
 
 
+def flag_value(flag):
+    """The path following a flag, if there is one rather than another flag."""
+    i = sys.argv.index(flag)
+    nxt = sys.argv[i + 1] if i + 1 < len(sys.argv) else None
+    return None if nxt is None or nxt.startswith("--") else nxt
+
+
 if __name__ == "__main__":
     if "--uninstall" in sys.argv:
-        i = sys.argv.index("--uninstall")
-        target = sys.argv[i + 1] if i + 1 < len(sys.argv) else mods_dir()
-        uninstall(target)
+        uninstall(flag_value("--uninstall") or mods_dir())
         sys.exit(0)
 
     folder = build()
+    # before --install, so a mod that will not compile never reaches the Mods folder
+    if "--check" in sys.argv:
+        check(flag_value("--check"))
     if "--install" in sys.argv:
-        i = sys.argv.index("--install")
-        target = sys.argv[i + 1] if i + 1 < len(sys.argv) else mods_dir()
-        install(folder, target)
+        install(folder, flag_value("--install") or mods_dir())
     # --release before --workshop when both are given: it is the step with preconditions, so a
     # dirty tree or a missing changelog section stops things before anything reaches Steam.
     if "--release" in sys.argv:
