@@ -1,0 +1,11 @@
+{
+  "name": "qud-hud-tests",
+  "private": true,
+  "description": "Tests for the Qud HUD display page and build script",
+  "scripts": {
+    "test": "node run.js"
+  },
+  "devDependencies": {
+    "jsdom": "^30.1.1"
+  }
+}

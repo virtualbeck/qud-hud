@@ -64,6 +64,21 @@ One gotcha worth knowing: a locally installed copy and a Workshop-subscribed cop
 ID, and having both present can make the game load a mix of the two. Unsubscribe or `--uninstall`
 while working on it.
 
+## Tests
+
+Needs Node and Python.
+
+```
+cd tests
+npm install
+npm test
+```
+
+This runs the display page in jsdom against a synthetic `hud_data.js`, the page's periodic rebuild,
+and `build.py` and everything it produces, including the Workshop build file. The C# is not compiled
+by the tests, since that needs the game's own assemblies. It is covered only by checks that do not:
+the embedded page has to read back exactly as the compiler would see it, and the braces must balance.
+
 ## Layout
 
 | | |
