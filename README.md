@@ -33,7 +33,11 @@ Full instructions are in [mod/README.md](mod/README.md), which ships with the mo
 
 - Drag a panel by its `≡` grip to rearrange it, or focus the grip and use the arrow keys.
 - `×` hides a panel; **Options** in the footer brings it back.
-- `+` / `-` resize, `0` resets, `R` restores the default layout.
+- `+` / `-` resize, `0` resets, `R` restores the default layout and unhides every panel.
+- **Hostiles in sight** has a Sort toggle: nearest first, or most dangerous first.
+- Unspent point reminders in **Pressing matters** can be dismissed with the `×` beside them, until
+  the number changes.
+- **Options** can also hide abilities that are simply ready.
 - The dot in the footer is green while the data is current, amber once nothing has been written for
   a couple of minutes, and red if the file can't be read. The readings fade when they go stale, so a
   closed game doesn't look like a live one.

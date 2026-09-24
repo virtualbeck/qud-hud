@@ -231,6 +231,74 @@ async function load(opts={}){
   dom.window.close();
   DATA.hostiles=[{name:'snapjaw scavenger',level:3,rating:'{{g|Easy}}',distance:1,dir:'NE',dangerRank:0,exact:true,hp:10,hpMax:12}];
 
+  // --- the sort picks its own 15: dangerous creatures beyond the fifteenth nearest must still show
+  {
+    // 20 hostiles, as the mod sends them: the nearest 15 plus the most dangerous 15. The five
+    // dangerous ones are the furthest away, so a list cut in nearest order would never show them.
+    const hs=[];
+    for(let i=0;i<20;i++){
+      const deadly=i>=15;
+      hs.push({name:(deadly?'deadly-':'snapjaw-')+i,level:deadly?20:1,
+               rating:deadly?'{{R|Impossible}}':'{{G|Trivial}}',distance:i+1,dir:'N',
+               nearRank:i,dangerRank:deadly?i-15:i+5,exact:false,health:'{{G|Perfect}}'});
+    }
+    DATA.hostiles=hs;
+    writeData(0,1);
+    const foeNames=el=>[].slice.call(el.querySelectorAll('.foe')).map(n=>n.textContent.split(' L')[0].trim());
+    ({dom,errs,d}=await load({store:{'qudhud.foeSort':'near'}}));
+    let shown=foeNames(d.getElementById('foes'));
+    check('Nearest shows 15',shown.length===15,shown.length+' shown');
+    check('Nearest shows the 15 nearest',shown[0]==='snapjaw-0'&&shown[14]==='snapjaw-14',shown[0]+'..'+shown[14]);
+    check('Nearest leaves out the far dangerous ones',!shown.some(n=>n.startsWith('deadly')));
+    dom.window.close();
+    ({dom,errs,d}=await load({store:{'qudhud.foeSort':'danger'}}));
+    shown=foeNames(d.getElementById('foes'));
+    check('Dangerous shows 15',shown.length===15,shown.length+' shown');
+    check('Dangerous leads with the far dangerous ones',
+          shown.slice(0,5).every(n=>n.startsWith('deadly')),shown.slice(0,5).join());
+    check('Dangerous drops the least dangerous snapjaws',
+          !shown.includes('snapjaw-14')&&!shown.includes('snapjaw-10'));
+    check('sort cap: no errors',errs.length===0,errs.join(' | '));
+    dom.window.close();
+    DATA.hostiles=[{name:'snapjaw scavenger',level:3,rating:'{{g|Easy}}',distance:1,dir:'NE',dangerRank:0,exact:true,hp:10,hpMax:12}];
+  }
+
+  // --- abilities can hide the ones that are simply ready
+  {
+    DATA.abilities=[
+      {name:'Sprint',enabled:true,cooldown:true,cooldownTurns:12,toggleable:false,toggled:false},
+      {name:'Force Bubble',enabled:true,cooldown:false,cooldownTurns:0,toggleable:true,toggled:false},
+      {name:'Discharge',enabled:false,cooldown:false,cooldownTurns:0,toggleable:false,toggled:false},
+      {name:'Jump',enabled:true,cooldown:false,cooldownTurns:0,toggleable:false,toggled:false},
+      {name:'Berate',enabled:true,cooldown:false,cooldownTurns:0,toggleable:false,toggled:false}];
+    writeData(0,1);
+    ({dom,errs,d}=await load());
+    let ab=d.getElementById('abilities').textContent;
+    check('abilities: all shown by default',/Jump/.test(ab)&&/Berate/.test(ab)&&/Sprint/.test(ab));
+    check('abilities: option is off by default',
+          d.querySelector('.tog[data-opt=abilQuiet]').getAttribute('aria-checked')==='false');
+    d.querySelector('.tog[data-opt=abilQuiet]').click();
+    ab=d.getElementById('abilities').textContent;
+    check('abilities: ready ones hidden once switched on',!/Jump/.test(ab)&&!/Berate/.test(ab),JSON.stringify(ab));
+    check('abilities: cooldown kept',/Sprint/.test(ab));
+    check('abilities: toggle kept',/Force Bubble/.test(ab));
+    check('abilities: disabled kept',/Discharge/.test(ab));
+    check('abilities: choice persisted',JSON.parse(dom.window.localStorage.getItem('qudhud.opts')).abilQuiet===true);
+    dom.window.close();
+
+    DATA.abilities=[{name:'Jump',enabled:true,cooldown:false,cooldownTurns:0,toggleable:false,toggled:false}];
+    writeData(0,2);
+    ({dom,errs,d}=await load({store:{'qudhud.opts':JSON.stringify({abilQuiet:true})}}));
+    check('abilities: all ready shows a message, not an empty panel',
+          /All abilities ready/.test(d.getElementById('abilities').textContent));
+    check('abilities: saved option leaves water settings at their defaults',
+          d.querySelector('.tog[data-opt=waterWarn]').getAttribute('aria-checked')==='true');
+    check('abilities: no errors',errs.length===0,errs.join(' | '));
+    dom.window.close();
+    DATA.abilities=[{name:'Sprint',enabled:true,cooldown:true,cooldownTurns:12,toggleable:false,toggled:false},
+                    {name:'Regenerate',enabled:true,cooldown:false,cooldownTurns:0,toggleable:true,toggled:true}];
+  }
+
   // --- dismissable reminders in Pressing matters
   DATA.alerts=[{sev:3,text:'1 hostile adjacent to you'},
                {sev:1,text:'160 unspent skill points',dis:true},

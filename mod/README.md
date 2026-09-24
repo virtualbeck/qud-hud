@@ -15,7 +15,7 @@ The page updates right before each of your turns, after everything else has acte
 - Drag a panel by its ≡ grip to rearrange, or focus the grip and use the arrow keys.
 - `×` hides a panel you don't want. **Options** lists them all and brings them back.
 - `+` and `-` resize, `0` resets size. `R` restores the default layout and unhides everything.
-- **Options** in the footer: low fresh water warning and threshold, which panels are shown, and the installed version.
+- **Options** in the footer: low fresh water warning and threshold, hiding abilities that are simply ready, which panels are shown, and the installed version.
 - **Hostiles in sight** has a Sort toggle in its top right, switching between nearest first and most dangerous first. Your choice is remembered.
 - Unspent point reminders in **Pressing matters** have an × to dismiss them. They come back if the number changes, and the totals are always in **Survival**.
 

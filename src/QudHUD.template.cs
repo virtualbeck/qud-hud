@@ -756,22 +756,30 @@ namespace QudHUD
             // snapjaw teaches you to stop looking at it. They still appear in the panel. A rating
             // the ladder does not recognise ranks 0 and still counts, so unfamiliar wording errs
             // toward raising the alarm rather than hiding it.
-            var list = new List<object>();
             int adjacent = 0, threats = 0, nearest = -1;
             for (int i = 0; i < found.Count; i++)
             {
-                if ((int)found[i]["_danger"] != 1)
-                {
-                    threats++;
-                    int dist = (int)found[i]["distance"];
-                    if (nearest < 0) nearest = dist;
-                    if (dist <= 1) adjacent++;
-                }
-                if (i >= 15) continue;
-                found[i].Remove("_danger");
-                found[i].Remove("_hp");
-                found[i].Remove("_hpMax");
-                list.Add(found[i]);
+                found[i]["nearRank"] = i;
+                if ((int)found[i]["_danger"] == 1) continue;
+                threats++;
+                int dist = (int)found[i]["distance"];
+                if (nearest < 0) nearest = dist;
+                if (dist <= 1) adjacent++;
+            }
+
+            // The page shows 15 at a time. Cutting the list in nearest order before sending would
+            // mean a dangerous creature beyond the fifteenth nearest could never appear, whichever
+            // sort was chosen, so send the nearest 15 and the most dangerous 15. In small fights
+            // they are the same creatures.
+            const int Shown = 15;
+            var list = new List<object>();
+            foreach (var f in found)
+            {
+                if ((int)f["nearRank"] >= Shown && (int)f["dangerRank"] >= Shown) continue;
+                f.Remove("_danger");
+                f.Remove("_hp");
+                f.Remove("_hpMax");
+                list.Add(f);
             }
             d["hostiles"] = list;
 

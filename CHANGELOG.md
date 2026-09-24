@@ -1,6 +1,8 @@
 # Changelog
 
 ## 1.0.10
+- Fixed: sorting Hostiles in sight by danger could never show a dangerous creature further away than the fifteenth nearest, because the list was cut in nearest order before it reached the page. Each sort now gets its own fifteen.
+- Added: Options can hide abilities that are simply ready, leaving cooldowns, toggles and disabled abilities. Off by default.
 - Changed: Trivial hostiles no longer set off the "adjacent to you" and "in sight" alarms in Pressing matters. A character who has outgrown them was getting a pulsing red alarm for every snapjaw, which teaches you to ignore the loudest thing on the page. They still appear in Hostiles in sight, and anything rated above Trivial still raises the alarm, with the distance given for the nearest real threat.
 
 ## 1.0.9

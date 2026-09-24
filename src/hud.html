@@ -216,6 +216,8 @@ body.dragging #marker{display:block}
   <div class="opt sub" id="waterSub"><label for="waterMin">At or below</label>
     <input id="waterMin" type="number" min="1" max="999" step="1"> <span>drams</span></div>
   <div class="opt sub">Only applies to characters who get thirsty.</div>
+  <div class="opt"><button type="button" class="tog" role="switch" data-opt="abilQuiet" aria-checked="false">[ ]</button>
+    <label>Hide abilities that are ready</label></div>
   <div class="phead">Panels</div>
   <div id="panelOpts"></div>
   <div class="ver">Qud HUD v<span id="ver"></span></div>
@@ -235,7 +237,7 @@ var SHADERS={fiery:'#d74200',icy:'#77bfcf',freezing:'#77bfcf',poisonous:'#00c420
 
 var PAGE_VERSION='__VERSION__';
 var OPTS_KEY='qudhud.opts';
-var opts={waterWarn:true,waterMin:8};
+var opts={waterWarn:true,waterMin:8,abilQuiet:false};
 try{var so=JSON.parse(localStorage.getItem(OPTS_KEY));if(so){for(var k in opts)if(k in so)opts[k]=so[k];}}catch(e){}
 
 function esc(s){return String(s).replace(/[&<>'"]/g,function(c){
@@ -416,6 +418,13 @@ function renderEffects(d){
 function renderAbilities(d){
   var ab=d.abilities||[];
   if(!ab.length){$('abilities').innerHTML=empty('No activated abilities.');return;}
+  // A plain "ready" is the one readout that tells you nothing; cooldowns, toggles and disabled
+  // abilities stay, since each of those is something you might need to know.
+  function idle(x){return x.enabled&&!x.cooldown&&!x.toggleable;}
+  if(opts.abilQuiet){
+    ab=ab.filter(function(x){return !idle(x);});
+    if(!ab.length){$('abilities').innerHTML=empty('All abilities ready.');return;}
+  }
   function cooling(x){return x.enabled&&x.cooldown;}
   function left(x){return x.cooldownTurns>0?x.cooldownTurns:1e9;}
   var cool=ab.filter(cooling).sort(function(a,b){return left(a)-left(b);});
@@ -443,12 +452,14 @@ function renderFoes(d){
   var f=d.hostiles;
   if(f===null||f===undefined){$('foes').innerHTML=empty('Hostile tracking unavailable in this game version.');return;}
   if(!f.length){$('foes').innerHTML=empty('No hostiles in sight.');return;}
-  // They arrive nearest first. The mod works out the dangerous order too and sends each creature
-  // its position in it, so switching never needs the hit points behind that ordering.
-  var list=foeSort==='danger'
-    ? f.slice().sort(function(a,b){return (a.dangerRank||0)-(b.dangerRank||0);})
-    : f;
-  var byDanger=foeSort==='danger';
+  // The mod sends the nearest 15 and the most dangerous 15, each carrying its place in both orders,
+  // so switching never needs the hit points behind the ordering. Show the 15 for the chosen order.
+  var SHOWN=15,byDanger=foeSort==='danger',key=byDanger?'danger':'near';
+  var list=f.map(function(x,i){
+    return {x:x,near:x.nearRank==null?i:x.nearRank,danger:x.dangerRank==null?i:x.dangerRank};
+  }).filter(function(r){return r[key]<SHOWN;})
+    .sort(function(a,b){return a[key]-b[key];})
+    .map(function(r){return r.x;});
   var head='<div class="foesort"><button type="button" class="sortbtn" data-mode="'+
     (byDanger?'near':'danger')+'" title="Show '+(byDanger?'nearest':'most dangerous')+' first">Sort: '+
     (byDanger?'Dangerous':'Nearest')+'</button></div>';
