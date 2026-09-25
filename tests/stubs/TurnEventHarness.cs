@@ -32,7 +32,18 @@ namespace QudHUDTests
             var player = new XRL.World.GameObject();
             try
             {
+                // loading: the first update gets its own note, and does not count toward a slow step
+                QudHUD.Hud.Attach(player);
+                string note = UnityEngine.Debug.Lines.Find(l => l.StartsWith("[QudHUD] First update: "));
+                Check("the first update is noted on its own", note != null && note.Contains("Slowest parts: "), note);
+                if (note != null) Console.WriteLine("INFO  " + note.Substring(9));
+                Check("and leaves nothing counted toward a slow step", Builds() == 0, Builds() + " builds");
+                QudHUD.Hud.Attach(player);
+                Check("only the first of the session is noted",
+                      UnityEngine.Debug.Lines.FindAll(l => l.StartsWith("[QudHUD] First update: ")).Count == 1, "");
+
                 QudHUD.TurnHook.Hooked = true;
+                Thread.Sleep(300);
                 QudHUD.Hud.Update(player, true);
                 Check("the player getting control always updates", Builds() == 1, Builds() + " builds");
                 Check("and writes the data file", File.Exists(Path.Combine(dir, "hud_data.js")), dir);

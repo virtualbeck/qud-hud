@@ -467,7 +467,10 @@ class CSharp(Temp):
 
     def test_turn_events_do_not_rebuild_every_turn(self):
         # one world map step passes hundreds of game turns; see tests/stubs/TurnEventHarness.cs
-        self.run_harness("TurnEventHarness")
+        out = self.run_harness("TurnEventHarness")
+        for line in out.splitlines():
+            if line.startswith("INFO"):
+                print("\n    " + line[6:], end="")
 
     def test_zone_scan(self):
         # the minimap and nearby objects: what the character knows, what is listed, memory, cost

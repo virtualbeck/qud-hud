@@ -71,6 +71,7 @@ namespace QudHUD
         static int turnEvents, builds;
         static double spentMs;
         static DateTime lastSlowNote = DateTime.MinValue;
+        static bool timedFirst;
         static readonly HashSet<string> logged = new HashSet<string>();
 
         public static string Dir
@@ -112,8 +113,29 @@ namespace QudHUD
                 R.SCall("XRL.Messages.MessageQueue", "AddPlayerMessage", "{{C|Qud HUD}}: open " + path.Replace("&", "&&").Replace("^", "^^") + " on your second monitor.");
                 UnityEngine.Debug.Log("[QudHUD] Display page: " + path);
             }
+
+            // The first update of a session also finds every game member the mod uses, so it is timed
+            // on its own, part by part, and kept out of the slow step note, which is about turns.
+            bool first = !timedFirst;
+            timedFirst = true;
+            if (first) Snapshot.Timing = new Dictionary<string, double>();
+            var took = System.Diagnostics.Stopwatch.StartNew();
             Update(player, true);
+            if (first)
+            {
+                var parts = new List<KeyValuePair<string, double>>(Snapshot.Timing);
+                Snapshot.Timing = null;
+                parts.Sort((a, b) => b.Value.CompareTo(a.Value));
+                var sb = new StringBuilder("[QudHUD] First update: " + Ms(took.Elapsed.TotalMilliseconds) + ", once per session. Finding and compiling " +
+                    R.Resolved + " game members: " + Ms(R.ResolveMs) + ". Slowest parts:");
+                for (int i = 0; i < parts.Count && i < 4; i++) sb.Append(i == 0 ? " " : ", ").Append(parts[i].Key).Append(' ').Append(Ms(parts[i].Value));
+                UnityEngine.Debug.Log(sb.Append('.').ToString());
+            }
+            turnEvents = builds = 0;
+            spentMs = 0;
         }
+
+        static string Ms(double ms) { return ms.ToString("0", CultureInfo.InvariantCulture) + " ms"; }
 
         public static void Update(GameObject player, bool force)
         {
@@ -145,7 +167,7 @@ namespace QudHUD
             if (spentMs >= 100 && (now - lastSlowNote).TotalSeconds >= 60)
             {
                 lastSlowNote = now;
-                UnityEngine.Debug.Log("[QudHUD] Slow step: " + spentMs.ToString("0", CultureInfo.InvariantCulture) + " ms in " + builds +
+                UnityEngine.Debug.Log("[QudHUD] Slow step: " + Ms(spentMs) + " in " + builds +
                     " update(s) over " + turnEvents + " turn event(s).");
             }
             turnEvents = builds = 0;
@@ -332,9 +354,14 @@ namespace QudHUD
             list.AddRange(sorted);
         }
 
+        // Set while the first update of a session is timed part by part.
+        internal static Dictionary<string, double> Timing;
+
         static void Section(string name, Action a)
         {
+            var took = Timing != null ? System.Diagnostics.Stopwatch.StartNew() : null;
             try { a(); } catch (Exception ex) { Hud.Log("section " + name, ex); }
+            if (took != null) Timing[name] = took.Elapsed.TotalMilliseconds;
         }
 
         // dismiss names a reminder the page may let the player silence, for things that are not
@@ -1454,6 +1481,10 @@ namespace QudHUD
         static readonly Dictionary<Type, Dictionary<string, MemberInfo>> statics = new Dictionary<Type, Dictionary<string, MemberInfo>>();
         static readonly object[] NoArgs = new object[0];
 
+        // how many members have been found and compiled, and how long that took, for the first update note
+        public static int Resolved;
+        public static double ResolveMs;
+
         // Everything cached under one name. Code that asks the same thing thousands of times a turn,
         // like the zone scan, holds one of these in a static field and skips even the name lookup.
         public sealed class Member
@@ -1581,9 +1612,12 @@ namespace QudHUD
                 Getter g;
                 if (!Lookup(member.Read, t, out g))
                 {
+                    var took = System.Diagnostics.Stopwatch.StartNew();
                     MemberInfo m = FindMember(t, member.Name, false);
                     g = m == null ? null : new Getter(m);
                     Store(member.Read, t, g);
+                    Resolved++;
+                    ResolveMs += took.Elapsed.TotalMilliseconds;
                 }
                 return g == null ? null : g.Read(o);
             }
@@ -1688,7 +1722,10 @@ namespace QudHUD
             object[] args = rest ?? (n == 0 ? NoArgs : n == 1 ? new[] { a } : new[] { a, b });
             var types = new Type[n];
             for (int i = 0; i < n; i++) types[i] = args[i] == null ? null : args[i].GetType();
+            var took = System.Diagnostics.Stopwatch.StartNew();
             var site = new Site(types, FindMethod(t, member.Name, args, isStatic), isStatic);
+            Resolved++;
+            ResolveMs += took.Elapsed.TotalMilliseconds;
             sites.Add(site);
             return site;
         }

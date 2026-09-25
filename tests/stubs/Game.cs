@@ -54,7 +54,9 @@ namespace UnityEngine
 {
     public static class Debug
     {
-        public static void Log(object message) { }
-        public static void LogWarning(object message) { }
+        // kept so a harness can check what the mod would have written to Player.log
+        public static readonly System.Collections.Generic.List<string> Lines = new System.Collections.Generic.List<string>();
+        public static void Log(object message) { Lines.Add(message + ""); }
+        public static void LogWarning(object message) { Lines.Add(message + ""); }
     }
 }
