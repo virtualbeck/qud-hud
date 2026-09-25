@@ -223,7 +223,7 @@ Download `{MOD_ID}-v{version}.zip` below and extract the `{MOD_ID}` folder into 
 Or subscribe on the [Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3805872225).
 
 Enable it in the Mods menu, start or load a game, and open the page the message log points at
-(normally `Documents/QudHUD/hud.html`) on your second monitor.
+(normally `Documents/QudHUD/hud.html`, or `~/QudHUD/hud.html` on Linux) on your second monitor.
 
 ## Changes{" since " + prev if prev else ""}
 
