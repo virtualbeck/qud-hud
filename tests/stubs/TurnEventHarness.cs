@@ -10,6 +10,16 @@ using System.Threading;
 
 namespace QudHUDTests
 {
+    public class NamedZone
+    {
+        public string ZoneID;
+        public int asked;
+        public string name = "Joppa";
+        public string DisplayName { get { asked++; return name; } }
+    }
+
+    public class ZonedPlayer : XRL.World.GameObject { public NamedZone CurrentZone; }
+
     public static class TurnEventHarness
     {
         static int fails;
@@ -66,6 +76,40 @@ namespace QudHUDTests
 
                 QudHUD.Hud.StepDone();
                 Check("counts start again when the player has control", Builds() == 0, Builds() + " builds");
+
+                // the zone's name is asked for on entering a zone and then every few seconds, not every update
+                var zoned = new ZonedPlayer { CurrentZone = new NamedZone { ZoneID = "JoppaWorld.11.22.1.1.10" } };
+                for (int i = 0; i < 20; i++) QudHUD.Hud.Update(zoned, true);
+                Check("zone name asked once while staying put", zoned.CurrentZone.asked == 1, zoned.CurrentZone.asked + "");
+                var before = zoned.CurrentZone;
+                zoned.CurrentZone = new NamedZone { ZoneID = "JoppaWorld.11.22.1.2.10", name = "some forgotten ruins" };
+                QudHUD.Hud.Update(zoned, true);
+                Check("and asked again on entering another zone", zoned.CurrentZone.asked == 1, zoned.CurrentZone.asked + "");
+                zoned.CurrentZone.name = "Bethesda Susa";
+                Type snap = typeof(QudHUD.Hud).Assembly.GetType("QudHUD.Snapshot");
+                snap.GetField("namedAt", Hidden).SetValue(null, DateTime.UtcNow.AddSeconds(-6));
+                QudHUD.Hud.Update(zoned, true);
+                Check("and again after a few seconds, catching a rename",
+                      zoned.CurrentZone.asked == 2 && File.ReadAllText(Path.Combine(dir, "hud_data.js")).Contains("Bethesda Susa"), zoned.CurrentZone.asked + "");
+                Check("the zone left behind was not asked again", before.asked == 1, before.asked + "");
+
+                // once a session, the cost of an ordinary step, averaged over the first fifty; the checks
+                // above took some steps already, so count from none
+                QudHUD.Hud.StepDone();   // close the step the zone checks above were counted into
+                typeof(QudHUD.Hud).GetField("typicalSteps", Hidden).SetValue(null, 0);
+                typeof(QudHUD.Hud).GetField("typicalBuilds", Hidden).SetValue(null, 0);
+                typeof(QudHUD.Hud).GetField("typicalMs", Hidden).SetValue(null, 0.0);
+                ((System.Collections.IDictionary)typeof(QudHUD.Hud).Assembly.GetType("QudHUD.Snapshot")
+                    .GetField("Typical", BindingFlags.NonPublic | BindingFlags.Static).GetValue(null)).Clear();
+                for (int i = 0; i < 49; i++) { QudHUD.Hud.Update(player, true); QudHUD.Hud.StepDone(); }
+                Check("no typical step note before fifty steps",
+                      !UnityEngine.Debug.Lines.Exists(l => l.StartsWith("[QudHUD] Typical step")), "");
+                QudHUD.Hud.Update(player, true); QudHUD.Hud.StepDone();
+                string typical = UnityEngine.Debug.Lines.Find(l => l.StartsWith("[QudHUD] Typical step"));
+                Check("a typical step note after fifty, naming parts", typical != null && typical.Contains("Slowest parts: ") && typical.Contains(" ms, "), typical);
+                if (typical != null) Console.WriteLine("INFO  " + typical.Substring(9));
+                for (int i = 0; i < 60; i++) { QudHUD.Hud.Update(player, true); QudHUD.Hud.StepDone(); }
+                Check("and only once", UnityEngine.Debug.Lines.FindAll(l => l.StartsWith("[QudHUD] Typical step")).Count == 1, "");
 
                 // without the hook the turn events are all there is, so outside auto-explore every one counts
                 QudHUD.TurnHook.Hooked = false;

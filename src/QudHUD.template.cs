@@ -72,6 +72,9 @@ namespace QudHUD
         static double spentMs;
         static DateTime lastSlowNote = DateTime.MinValue;
         static bool timedFirst;
+        const int TypicalSteps = 50;
+        static int typicalSteps, typicalBuilds;
+        static double typicalMs;
         static readonly HashSet<string> logged = new HashSet<string>();
 
         public static string Dir
@@ -157,6 +160,24 @@ namespace QudHUD
         // Player.log, at most once a minute, with enough to tell whether the mod or the turn count did it.
         public static void StepDone()
         {
+            // Once a session, what an ordinary step costs, averaged over the first few after loading, so
+            // the real game's figures can be read without anything having to be slow first.
+            if (typicalSteps < TypicalSteps)
+            {
+                typicalSteps++;
+                typicalMs += spentMs;
+                typicalBuilds += builds;
+                Snapshot.AddToTypical();
+                if (typicalSteps == TypicalSteps)
+                {
+                    UnityEngine.Debug.Log("[QudHUD] Typical step, averaged over the first " + TypicalSteps + " after loading: " +
+                        (typicalMs / TypicalSteps).ToString("0.0", CultureInfo.InvariantCulture) + " ms in " +
+                        ((double)typicalBuilds / TypicalSteps).ToString("0.0", CultureInfo.InvariantCulture) + " update(s). Slowest parts: " +
+                        Snapshot.Top(Snapshot.Typical, 5, TypicalSteps, "0.00") + ".");
+                    Snapshot.Typical.Clear();
+                }
+            }
+
             DateTime now = DateTime.UtcNow;
             if (spentMs >= 100 && (now - lastSlowNote).TotalSeconds >= 60)
             {
@@ -373,15 +394,35 @@ namespace QudHUD
             Spent[name] = had + ms;
         }
 
+        // Everything spent over the first steps of a session, for the typical step note.
+        internal static readonly Dictionary<string, double> Typical = new Dictionary<string, double>(R.Keys);
+
         // The slowest parts, for a note in Player.log; and starts counting afresh.
         internal static string Slowest(int n)
         {
-            var parts = new List<KeyValuePair<string, double>>(Spent);
+            string s = Top(Spent, n, 1, "0");
             Spent.Clear();
+            return s;
+        }
+
+        internal static void AddToTypical()
+        {
+            foreach (var kv in Spent)
+            {
+                double had;
+                Typical.TryGetValue(kv.Key, out had);
+                Typical[kv.Key] = had + kv.Value;
+            }
+        }
+
+        internal static string Top(Dictionary<string, double> from, int n, double per, string format)
+        {
+            var parts = new List<KeyValuePair<string, double>>(from);
             parts.Sort((a, b) => b.Value.CompareTo(a.Value));
             var sb = new StringBuilder();
             for (int i = 0; i < parts.Count && i < n; i++)
-                sb.Append(i == 0 ? "" : ", ").Append(parts[i].Key).Append(' ').Append(parts[i].Value.ToString("0", CultureInfo.InvariantCulture)).Append(" ms");
+                sb.Append(i == 0 ? "" : ", ").Append(parts[i].Key).Append(' ')
+                  .Append((parts[i].Value / per).ToString(format, CultureInfo.InvariantCulture)).Append(" ms");
             return sb.ToString();
         }
 
@@ -471,20 +512,38 @@ namespace QudHUD
             }
         }
 
+        // The game builds a zone's name through its world and naming data, which measured half a second
+        // the first time in a session. A name seldom changes while you stand in the zone, mostly when
+        // you discover the place, so it is asked for on entering a zone and then every few seconds
+        // rather than on every update.
+        static string namedZone, zoneName;
+        static DateTime namedAt = DateTime.MinValue;
+        const double RenameSeconds = 5;
+
+        static string ZoneName(object z)
+        {
+            string id = R.Str(R.Get(z, "ZoneID"));
+            DateTime now = DateTime.UtcNow;
+            if (id != null && id == namedZone && (now - namedAt).TotalSeconds < RenameSeconds) return zoneName;
+            string zn = R.Str(R.Get(z, "DisplayName"));
+            if (string.IsNullOrEmpty(zn))
+            {
+                object zm = R.SGet("XRL.The", "ZoneManager");
+                zn = R.Str(R.Call(zm, "GetZoneDisplayName", id));
+            }
+            if (string.IsNullOrEmpty(zn)) zn = R.Str(R.Get(z, "BaseDisplayName"));
+            namedZone = id;
+            namedAt = now;
+            return zoneName = zn;
+        }
+
         static void BuildZone(GameObject p, Dictionary<string, object> d)
         {
             var zone = new Dictionary<string, object>(R.Keys);
             object z = R.Get(p, "CurrentZone");
             if (z != null)
             {
-                string zn = R.Str(R.Get(z, "DisplayName"));
-                if (string.IsNullOrEmpty(zn))
-                {
-                    object zm = R.SGet("XRL.The", "ZoneManager");
-                    zn = R.Str(R.Call(zm, "GetZoneDisplayName", R.Str(R.Get(z, "ZoneID"))));
-                }
-                if (string.IsNullOrEmpty(zn)) zn = R.Str(R.Get(z, "BaseDisplayName"));
-                zone["name"] = zn;
+                zone["name"] = ZoneName(z);
                 int zz = R.Int(R.Get(z, "Z"), 10);
                 zone["depth"] = zz > 10 ? zz - 10 : 0;
             }
