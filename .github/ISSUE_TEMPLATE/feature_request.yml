@@ -1,0 +1,16 @@
+name: Feature request
+description: An idea for something Qud HUD could show or do.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: What you would like
+      description: What the HUD should show or do.
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why
+      description: What it would help with while you play, or what you have to do in game now to find it out.

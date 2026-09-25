@@ -1,0 +1,56 @@
+name: Bug report
+description: Something in Qud HUD is wrong or not working.
+labels: [bug]
+body:
+  - type: input
+    id: mod-version
+    attributes:
+      label: Qud HUD version
+      description: Shown at the bottom of Options on the display page.
+      placeholder: "1.0.11"
+    validations:
+      required: true
+  - type: input
+    id: game-version
+    attributes:
+      label: Caves of Qud version
+      description: Shown on the game's title screen.
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows
+        - macOS
+        - Linux
+        - Steam Deck
+    validations:
+      required: true
+  - type: input
+    id: browser
+    attributes:
+      label: Browser showing the page
+      description: On Linux, say if it was installed as a Flatpak.
+      placeholder: "Chrome, Edge, Firefox (Flatpak)..."
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you saw, and what you expected instead. A screenshot of the page helps.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to make it happen
+      description: The steps, if you know them.
+  - type: textarea
+    id: log
+    attributes:
+      label: Lines from Player.log
+      description: |
+        Any lines starting with `[QudHUD]`. Player.log is in:
+        - Windows: `%USERPROFILE%\AppData\LocalLow\Freehold Games\CavesOfQud`
+        - macOS: `~/Library/Logs/Freehold Games/CavesOfQud`
+        - Linux: `~/.config/unity3d/Freehold Games/CavesOfQud`
+      render: text
