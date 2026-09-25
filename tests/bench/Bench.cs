@@ -316,7 +316,7 @@ namespace QudHUDBench
                 Console.WriteLine(string.Format("  {0,-18}{1,9:0.0} us  (snapshot, zone scan, json, file)", "whole update", update));
                 Console.WriteLine(string.Format("  {0,-18}{1,9:0.0} us", "sections total", total));
             }
-            finally { try { Directory.Delete(dir, true); } catch { } }
+            finally { QudHUD.Writer.Flush(5000); try { Directory.Delete(dir, true); } catch { } }
             Console.WriteLine("all green");   // it ran start to finish; the numbers are for reading
             return 0;
         }

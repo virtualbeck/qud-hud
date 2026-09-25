@@ -66,7 +66,7 @@ namespace QudHUDTests
                 Thread.Sleep(300);
                 QudHUD.Hud.Update(player, true);
                 Check("the player getting control always updates", Builds() == 1, Builds() + " builds");
-                Check("and writes the data file", File.Exists(Path.Combine(dir, "hud_data.js")), dir);
+                Check("and writes the data file", QudHUD.Writer.Flush(5000) && File.Exists(Path.Combine(dir, "hud_data.js")), dir);
 
                 for (int i = 0; i < 900; i++) QudHUD.Hud.Update(player, false);
                 Check("with the input hook, a world map step's turns cost no extra updates", Builds() == 1, Builds() + " builds");
@@ -90,7 +90,7 @@ namespace QudHUDTests
                 snap.GetField("namedAt", Hidden).SetValue(null, DateTime.UtcNow.AddSeconds(-6));
                 QudHUD.Hud.Update(zoned, true);
                 Check("and again after a few seconds, catching a rename",
-                      zoned.CurrentZone.asked == 2 && File.ReadAllText(Path.Combine(dir, "hud_data.js")).Contains("Bethesda Susa"), zoned.CurrentZone.asked + "");
+                      zoned.CurrentZone.asked == 2 && QudHUD.Writer.Flush(5000) && File.ReadAllText(Path.Combine(dir, "hud_data.js")).Contains("Bethesda Susa"), zoned.CurrentZone.asked + "");
                 Check("the zone left behind was not asked again", before.asked == 1, before.asked + "");
 
                 // once a session, the cost of an ordinary step, averaged over the first fifty; the checks
@@ -109,14 +109,26 @@ namespace QudHUDTests
                 Check("a typical step note after fifty, naming parts", typical != null && typical.Contains("Slowest parts: ") && typical.Contains(" ms, "), typical);
                 if (typical != null) Console.WriteLine("INFO  " + typical.Substring(9));
                 for (int i = 0; i < 60; i++) { QudHUD.Hud.Update(player, true); QudHUD.Hud.StepDone(); }
+                Check("and it says what the writer's thread spent", typical != null && typical.Contains("Off the game's thread: "), typical);
                 Check("and only once", UnityEngine.Debug.Lines.FindAll(l => l.StartsWith("[QudHUD] Typical step")).Count == 1, "");
+
+                // the file is written off the game's thread: posts pile up faster than a disk can take
+                // them, and the newest one is what ends up on disk, with no temporary file left behind
+                string target = Path.Combine(dir, "writer-test.js");
+                var posting = System.Diagnostics.Stopwatch.StartNew();
+                for (int i = 0; i < 500; i++) QudHUD.Writer.Post(target, "payload " + i + new string('x', 20000));
+                double postMs = posting.Elapsed.TotalMilliseconds;
+                Check("five hundred handovers take the game thread next to no time", postMs < 50, postMs.ToString("0.0") + " ms");
+                Check("everything handed over reaches the disk", QudHUD.Writer.Flush(10000), "");
+                Check("and the newest is what is on disk", File.ReadAllText(target).StartsWith("payload 499x"), File.ReadAllText(target).Substring(0, 12));
+                Check("with no temporary file left", !File.Exists(target + ".tmp"), "");
 
                 // without the hook the turn events are all there is, so outside auto-explore every one counts
                 QudHUD.TurnHook.Hooked = false;
                 for (int i = 0; i < 50; i++) QudHUD.Hud.Update(player, false);
                 Check("without the input hook, every turn still updates", Builds() == 50, Builds() + " builds");
             }
-            finally { try { Directory.Delete(dir, true); } catch { } }
+            finally { QudHUD.Writer.Flush(5000); try { Directory.Delete(dir, true); } catch { } }
             Console.WriteLine(fails > 0 ? fails + " FAILURES" : "all green");
             return fails > 0 ? 1 : 0;
         }

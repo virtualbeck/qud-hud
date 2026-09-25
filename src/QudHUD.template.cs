@@ -128,6 +128,7 @@ namespace QudHUD
             if (first)
                 UnityEngine.Debug.Log("[QudHUD] First update: " + Ms(took.Elapsed.TotalMilliseconds) + ", once per session. Finding and compiling " +
                     R.Resolved + " game members: " + Ms(R.ResolveMs) + ". Slowest parts: " + parts + ".");
+            Writer.Report();
             turnEvents = builds = 0;
             spentMs = 0;
         }
@@ -173,7 +174,7 @@ namespace QudHUD
                     UnityEngine.Debug.Log("[QudHUD] Typical step, averaged over the first " + TypicalSteps + " after loading: " +
                         (typicalMs / TypicalSteps).ToString("0.0", CultureInfo.InvariantCulture) + " ms in " +
                         ((double)typicalBuilds / TypicalSteps).ToString("0.0", CultureInfo.InvariantCulture) + " update(s). Slowest parts: " +
-                        Snapshot.Top(Snapshot.Typical, 5, TypicalSteps, "0.00") + ".");
+                        Snapshot.Top(Snapshot.Typical, 5, TypicalSteps, "0.00") + ". Off the game's thread: " + Writer.Report() + ".");
                     Snapshot.Typical.Clear();
                 }
             }
@@ -204,40 +205,127 @@ namespace QudHUD
             if (json == lastJson) return;
             since = System.Diagnostics.Stopwatch.GetTimestamp();
             try { Save(json); }
-            finally { Snapshot.Count("file write", since); }
+            finally { Snapshot.Count("file handover", since); }
         }
 
         static void Save(string json)
         {
-            try
-            {
-                seq++;
-                string payload = "window.QUD_HUD={\"version\":\"" + Version + "\",\"seq\":" + seq + ",\"stamp\":\"" + DateTime.Now.ToString("HH:mm:ss", CultureInfo.InvariantCulture) + "\",\"data\":" + json + "};\n";
-                string path = Path.Combine(Dir, "hud_data.js");
-                string tmp = path + ".tmp";
-                File.WriteAllText(tmp, payload, new UTF8Encoding(false));
-                try
-                {
-                    if (File.Exists(path)) File.Replace(tmp, path, null);
-                    else File.Move(tmp, path);
-                }
-                catch
-                {
-                    File.Copy(tmp, path, true);
-                    File.Delete(tmp);
-                }
-                lastJson = json;
-            }
-            catch (Exception ex) { Log("write", ex); }
+            seq++;
+            string payload = "window.QUD_HUD={\"version\":\"" + Version + "\",\"seq\":" + seq + ",\"stamp\":\"" + DateTime.Now.ToString("HH:mm:ss", CultureInfo.InvariantCulture) + "\",\"data\":" + json + "};\n";
+            Writer.Post(Path.Combine(Dir, "hud_data.js"), payload);
+            lastJson = json;
         }
 
+        // also called from the writer's thread
         public static void Log(string key, Exception ex)
         {
-            if (!logged.Add(key)) return;
+            lock (logged) if (!logged.Add(key)) return;
             try { UnityEngine.Debug.LogWarning("[QudHUD] " + key + ": " + ex); } catch { }
         }
 
         const string HtmlPage = @"__HTML__";
+    }
+
+    // Writes the data file on a thread of its own. On Windows, writing and replacing the file measured
+    // 8ms a step on a fast machine, most of an update, likely antivirus looking at each new file. The
+    // game thread only hands over the finished text. If the disk falls behind, only the newest text is
+    // written, so the page never lags more than one write. The file is replaced whole, so the page
+    // never reads half of one.
+    static class Writer
+    {
+        static readonly object gate = new object();
+        static string pendingPath, pendingText;
+        static bool busy;
+        static System.Threading.Thread thread;
+        // how many writes, and how long they took, for the typical step note
+        static int writes;
+        static double writeMs;
+
+        public static void Post(string path, string text)
+        {
+            lock (gate)
+            {
+                pendingPath = path;
+                pendingText = text;
+                if (thread == null)
+                {
+                    thread = new System.Threading.Thread(Run) { IsBackground = true, Name = "QudHUD writer" };
+                    thread.Start();
+                }
+                System.Threading.Monitor.Pulse(gate);
+            }
+        }
+
+        static void Run()
+        {
+            while (true)
+            {
+                string path, text;
+                lock (gate)
+                {
+                    while (pendingText == null) System.Threading.Monitor.Wait(gate);
+                    path = pendingPath;
+                    text = pendingText;
+                    pendingText = null;
+                    busy = true;
+                }
+                var took = System.Diagnostics.Stopwatch.StartNew();
+                try { Replace(path, text); }
+                catch (Exception ex) { Hud.Log("write", ex); }
+                lock (gate)
+                {
+                    busy = false;
+                    writes++;
+                    writeMs += took.Elapsed.TotalMilliseconds;
+                    System.Threading.Monitor.PulseAll(gate);
+                }
+            }
+        }
+
+        static void Replace(string path, string text)
+        {
+            string tmp = path + ".tmp";
+            File.WriteAllText(tmp, text, new UTF8Encoding(false));
+            try
+            {
+                if (File.Exists(path)) File.Replace(tmp, path, null);
+                else File.Move(tmp, path);
+            }
+            catch
+            {
+                File.Copy(tmp, path, true);
+                File.Delete(tmp);
+            }
+        }
+
+        // Waits until everything handed over is on disk, or the time runs out. For tests.
+        public static bool Flush(int ms)
+        {
+            DateTime until = DateTime.UtcNow.AddMilliseconds(ms);
+            lock (gate)
+            {
+                while (pendingText != null || busy)
+                {
+                    int left = (int)(until - DateTime.UtcNow).TotalMilliseconds;
+                    if (left <= 0) return false;
+                    System.Threading.Monitor.Wait(gate, left);
+                }
+                return true;
+            }
+        }
+
+        // Writes so far and their average time, and starts counting afresh.
+        public static string Report()
+        {
+            lock (gate)
+            {
+                string s = writes + " write(s) on the writer's thread, " +
+                    (writes > 0 ? writeMs / writes : 0).ToString("0.0", CultureInfo.InvariantCulture) + " ms each";
+                writes = 0;
+                writeMs = 0;
+                return s;
+            }
+        }
     }
 
     // Updates the HUD right before the game waits for player input, after all
