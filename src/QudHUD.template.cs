@@ -1389,15 +1389,25 @@ namespace QudHUD
             nearby = Nearest(p, found);
         }
 
-        // Nearest first. Only now are creatures checked for being dead, hostile or a companion, and only
-        // until the list is full, since those checks are the expensive ones.
+        // Things you can pick up first, then everything else, each nearest first and each with its own
+        // share of the list. With one shared list, the grass and furniture around you filled it within a
+        // couple of steps and a knife a few cells away never made it. Only now are creatures checked for
+        // being dead, hostile or a companion, and only until their share is full, since those checks are
+        // the expensive ones.
         static List<object> Nearest(GameObject p, List<Candidate> found)
         {
             found.Sort((a, b) => a.Dist.CompareTo(b.Dist));
-            var list = new List<object>();
+            var items = new List<object>();
+            var rest = new List<object>();
             foreach (Candidate f in found)
             {
-                if (list.Count >= NearbyMax) break;
+                bool item = f.Info.Kind == "item";
+                List<object> list = item ? items : rest;
+                if (list.Count >= NearbyMax)
+                {
+                    if (items.Count >= NearbyMax && rest.Count >= NearbyMax) break;
+                    continue;
+                }
                 if (f.Info.Creature && (Snapshot.IsDead(f.O) || Snapshot.IsHostile(f.O, p) || Snapshot.IsCompanion(f.O, p)))
                     continue;
                 list.Add(new Dictionary<string, object>(R.Keys) {
@@ -1408,7 +1418,8 @@ namespace QudHUD
                     { "dir", Snapshot.Direction(p, f.O) }
                 });
             }
-            return list;
+            items.AddRange(rest);
+            return items;
         }
 
         static bool Explored(object cell)

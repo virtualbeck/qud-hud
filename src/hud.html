@@ -65,8 +65,8 @@ body{
 
 /* columns */
 #cols{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0 1rem}
-.zone.vacant{display:none}
-.col{min-width:0}
+.zone.vacant,.track.vacant{display:none}
+.col,.track{min-width:0}
 .row{display:flex;justify-content:space-between;gap:.8rem;align-items:baseline}
 .row+.row{margin-top:.18rem}
 .row .r{white-space:nowrap}
@@ -132,7 +132,7 @@ body.waiting #app{display:none}
 body.waiting #wait{display:block}
 
 .sep{border-top:1px dashed var(--frame);margin:.45rem 0 .35rem}
-#map canvas{display:block;image-rendering:pixelated;max-width:100%}
+#map canvas{display:block;width:100%;image-rendering:pixelated}
 .near .mark{margin-right:.5ch}
 .msg{font-size:.88rem;line-height:1.3;opacity:.7}
 .msg+.msg{margin-top:.15rem}
@@ -211,23 +211,23 @@ body.dragging #marker{display:block}
   </div>
 
   <div id="cols">
-    <div class="col zone" data-zone="c1">
+    <div class="track"><div class="col zone" data-zone="c1">
       <section class="panel" data-panel="foes"><h2>Hostiles in sight</h2><div id="foes"></div></section>
       <section class="panel" data-panel="pals"><h2>Companions</h2><div id="pals"></div></section>
       <section class="panel" data-panel="effects"><h2>Effects</h2><div id="effects"></div></section>
       <section class="panel" data-panel="combat"><h2>Combat</h2><div id="combat"></div></section>
       <section class="panel" data-panel="abilities"><h2>Abilities</h2><div id="abilities"></div></section>
-    </div>
-    <div class="col zone" data-zone="c2">
+    </div></div>
+    <div class="track"><div class="col zone" data-zone="c2">
       <section class="panel" data-panel="survival"><h2>Survival</h2><div id="survival"></div></section>
       <section class="panel" data-panel="gear"><h2>Gear</h2><div id="gear"></div></section>
       <section class="panel" data-panel="attrs"><h2>Attributes</h2><div id="attrs"></div></section>
-    </div>
-    <div class="col zone" data-zone="c3">
+    </div></div>
+    <div class="track"><div class="col zone" data-zone="c3">
       <section class="panel" data-panel="map"><h2>Minimap</h2><div id="map"></div></section>
       <section class="panel" data-panel="near"><h2>Nearby objects</h2><div id="near"></div></section>
       <section class="panel" data-panel="msgs"><h2>Messages</h2><div id="msgs"></div></section>
-    </div>
+    </div></div>
   </div>
 </div>
 
@@ -573,24 +573,31 @@ function renderMinimap(d){
   if(m===null||m===undefined){box.innerHTML=empty('Minimap unavailable in this game version.');return;}
   var cv=box.querySelector('canvas');
   if(!cv){box.innerHTML='';cv=document.createElement('canvas');box.appendChild(cv);}
-  // cells are taller than wide, as the game's own tiles are
-  var cw=Math.max(1,Math.floor((box.clientWidth||320)/m.w)),ch=Math.round(cw*1.5),ratio=window.devicePixelRatio||1;
-  cv.style.width=(cw*m.w)+'px';cv.style.height=(ch*m.h)+'px';
-  cv.width=cw*m.w*ratio;cv.height=ch*m.h*ratio;
+  // It fills the panel's width, and cells are taller than wide as the game's own tiles are. The
+  // stylesheet sizes it; the bitmap matches that size in device pixels so it stays sharp.
+  cv.style.aspectRatio=m.w+' / '+(m.h*1.5);
+  var cssW=box.clientWidth||320,ratio=window.devicePixelRatio||1;
+  var W=Math.max(m.w,Math.round(cssW*ratio)),H=Math.max(m.h,Math.round(cssW*m.h*1.5/m.w*ratio));
+  cv.width=W;cv.height=H;
   var ctx=cv.getContext&&cv.getContext('2d');
   if(!ctx)return;
-  ctx.setTransform(ratio,0,0,ratio,0,0);
+  // cell edges land on whole device pixels, so cells of a fractional size leave no seams between them
+  function edge(i,cells,size){return Math.round(i*size/cells);}
+  function cell(x,y){return [edge(x,m.w,W),edge(y,m.h,H),edge(x+1,m.w,W)-edge(x,m.w,W),edge(y+1,m.h,H)-edge(y,m.h,H)];}
   minimapCells(m).forEach(function(k){
-    ctx.globalAlpha=k.seen?1:0.4;ctx.fillStyle=k.col;ctx.fillRect(k.x*cw,k.y*ch,cw,ch);
+    var r=cell(k.x,k.y);
+    ctx.globalAlpha=k.seen?1:0.4;ctx.fillStyle=k.col;ctx.fillRect(r[0],r[1],r[2],r[3]);
   });
   ctx.globalAlpha=1;
   // the player, drawn over everything and ringed so they can always be found at a glance
   if(m.px>=0&&m.py>=0){
-    ctx.fillStyle=PAL.Y;ctx.fillRect(m.px*cw,m.py*ch,cw,ch);
-    ctx.strokeStyle=PAL.W;ctx.lineWidth=1;ctx.strokeRect(m.px*cw-1.5,m.py*ch-1.5,cw+3,ch+3);
+    var r=cell(m.px,m.py),o=1.5*ratio;
+    ctx.fillStyle=PAL.Y;ctx.fillRect(r[0],r[1],r[2],r[3]);
+    ctx.strokeStyle=PAL.W;ctx.lineWidth=ratio;ctx.strokeRect(r[0]-o,r[1]-o,r[2]+2*o,r[3]+2*o);
   }
 }
 
+var NEAR_ROWS=20;
 function renderNearby(d){
   var n=d.nearby;
   if(n===null||n===undefined){$('near').innerHTML=empty('Nearby objects unavailable in this game version.');return;}
@@ -601,10 +608,28 @@ function renderNearby(d){
     return true;
   });
   if(!shown.length){$('near').innerHTML=empty(n.length?'Nothing nearby matches the filters in Options.':'Nothing of note nearby.');return;}
-  $('near').innerHTML=shown.map(function(x){
+  // Things you can pick up first, one row each, since each lies somewhere different. Then the rest,
+  // nearest first, with repeats of the same thing, a meadow's worth of grass, folded into one row
+  // that says how many and where the nearest is.
+  var items=[],rest=[],seen={};
+  shown.forEach(function(x){
+    if(x.kind==='item'){items.push(x);return;}
+    var k=x.kind+'|'+x.col+'|'+plain(x.name);
+    if(seen[k]){seen[k].count++;return;}
+    rest.push(seen[k]={x:x,count:1});
+  });
+  function line(x,count){
     var mark='<span class="mark" style="color:'+(PAL[x.col]||PAL.y)+'">\u25A0</span>';
-    return row(mark+qud(x.name),'<span class="dist">'+(x.distance===0?'here':where(x))+'</span>','near '+esc(x.kind));
-  }).join('');
+    return row(mark+qud(x.name)+(count>1?' <span class="dim count">\u00D7'+count+'</span>':''),
+               '<span class="dist">'+(x.distance===0?'here':where(x))+'</span>','near '+esc(x.kind));
+  }
+  var h=items.slice(0,NEAR_ROWS).map(function(x){return line(x,1);}).join('');
+  var room=NEAR_ROWS-Math.min(items.length,NEAR_ROWS);
+  if(room>0&&rest.length){
+    if(h)h+='<div class="sep"></div>';
+    h+=rest.slice(0,room).map(function(g){return line(g.x,g.count);}).join('');
+  }
+  $('near').innerHTML=h;
 }
 
 function renderMessages(d){
@@ -791,22 +816,39 @@ var defaultLayout=snapshot();
 try{apply(JSON.parse(localStorage.getItem(LAYOUT_KEY)));}catch(e){}
 
 // Empty columns collapse so the rest widen; during a drag they reappear as drop targets.
-var colsEl=$('cols'),colZones=zones.filter(function(z){return z.parentNode===colsEl;});
+// Each column sits in a track. When the window is too narrow for every column in use, the ones that
+// do not fit stack under the last one that does, each keeping its own panels in order. Wrapping them
+// onto a new grid row instead put them under the first column, below the taller of the two above.
+var colsEl=$('cols'),tracks=[].slice.call(colsEl.children);
+var colZones=zones.filter(function(z){return z.classList.contains('col');});
 function colCap(){var w=window.innerWidth;return w<=760?1:w<=1200?2:3;}
 function refreshCols(){
-  var dragging=document.body.classList.contains('dragging'),used=0;
+  var dragging=document.body.classList.contains('dragging'),shown=[];
   colZones.forEach(function(z){
     var show=dragging||shownIn(z).length>0;
     z.classList.toggle('vacant',!show);
-    if(show)used++;
+    if(show)shown.push(z);
   });
-  colsEl.style.gridTemplateColumns='repeat('+Math.max(1,Math.min(used,colCap()))+',minmax(0,1fr))';
+  var n=Math.max(1,Math.min(shown.length,colCap()));
+  shown.forEach(function(z,i){tracks[Math.min(i,n-1)].appendChild(z);});
+  tracks.forEach(function(t){
+    t.classList.toggle('vacant',![].slice.call(t.children).some(function(z){return !z.classList.contains('vacant');}));
+  });
+  colsEl.style.gridTemplateColumns='repeat('+n+',minmax(0,1fr))';
 }
 refreshCols();
 window.addEventListener('resize',refreshCols);
-// The map is sized to its panel, so it is redrawn whenever that panel's width can have changed.
+// The map fills its panel, so it is redrawn whenever the panel's width changes: the window resizing,
+// a column collapsing or stacking, a panel hidden or moved, or the page scaled.
 function redrawMap(){if(lastPayload)try{renderMinimap(lastPayload.data||{});}catch(e){}}
 window.addEventListener('resize',redrawMap);
+if(window.ResizeObserver){
+  var mapWidth=0;
+  new ResizeObserver(function(){
+    var w=$('map').clientWidth;
+    if(w&&w!==mapWidth){mapWidth=w;redrawMap();}
+  }).observe($('map'));
+}
 
 function settle(p){p.classList.remove('moved');void p.offsetWidth;p.classList.add('moved');}
 

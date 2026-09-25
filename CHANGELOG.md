@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.11
+- Fixed: Nearby objects rarely showed anything you could pick up. It listed the twenty nearest things of any kind, so the grass and furniture around you filled it and a knife a few cells away never made it. Things you can pick up now come first, each on its own row, and have their own share of the list. Everything else follows, nearest first, with repeats of the same thing folded into one row with a count.
+- Fixed: on a window too narrow for three columns, the Minimap, Nearby objects and Messages column wrapped under the first column, below the taller of the two above it, leaving a gap and mixing it in with the wrong panels. Columns that do not fit now stack under the last one that does, in their own order.
+- Fixed: the Minimap kept its size when its panel changed width without the window resizing, such as when a column collapsed or a panel was hidden. It now fills its panel and redraws whenever the panel's width changes.
+
 ## 1.0.10
 - Changed: a first pass at optimizing the mod. It does much less work each turn, which is most noticeable while travelling on the world map. Player.log also gets a few timing notes, worth including with any report of slowness.
 - Fixed: on Linux with a Flatpak browser, such as the Firefox that Bazzite ships, the page sat on "Waiting for Caves of Qud" forever with the game running. The sandbox hands the browser the page alone, not the data file beside it. The page now recognises this and says how to grant access, and the READMEs give the Linux location, `~/QudHUD`, rather than `Documents/QudHUD`.

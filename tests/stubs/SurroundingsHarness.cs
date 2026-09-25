@@ -252,6 +252,31 @@ namespace QudHUDTests
             Check("zone change: rescans at once, with the new size", (int)m["w"] == 3 && Decode((string)m["c"]) == "WWWWWWWWW",
                   m["w"] + " " + Decode((string)m["c"]));
 
+            // --- a meadow: grass on every cell around you, a table, and a knife six cells off. Things you
+            // can pick up get their own share of the list, so the scenery cannot crowd the knife out.
+            Reset();
+            var meadow = new Zone(20, 9);
+            for (int x = 0; x < 20; x++)
+                for (int y = 0; y < 9; y++)
+                {
+                    meadow.grid[x, y].visible = true;
+                    Put(meadow, x, y, "dirt", "&w", 0);
+                    Put(meadow, x, y, "grass", "&g", 2).tags.Add("Plant");
+                }
+            var walker = new Player { CurrentZone = meadow, CurrentCell = meadow.grid[4, 4] };
+            meadow.grid[4, 4].Objects.Add(walker);
+            Put(meadow, 5, 4, "table", "&w", 5).parts["Inventory"] = new object();
+            Put(meadow, 10, 4, "knife", "&c", 5).takeable = true;
+            Put(meadow, 12, 2, "long sword", "&C", 5).takeable = true;
+            d = Scan(walker);
+            names = Names(d);
+            listed = string.Join(", ", names.ToArray());
+            Check("meadow: a knife six cells off still makes the list", names.Contains("knife"), listed);
+            Check("meadow: things you can pick up come first, nearest first",
+                  names.Count > 2 && names[0] == "knife" && names[1] == "long sword", listed);
+            Check("meadow: the scenery is still listed after them", names.Contains("table") && names.Contains("grass"), listed);
+            Check("meadow: each share is capped", names.Count == 2 + 20, names.Count.ToString());
+
             // --- cost and size on a full 80x25 zone, everything in view
             Reset();
             var big = new Zone(80, 25);

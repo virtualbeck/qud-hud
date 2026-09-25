@@ -401,9 +401,13 @@ async function load(opts={}){
           JSON.stringify([at(0,1),at(2,1)]));
     check('minimap: in view again after',at(3,1).seen&&at(4,1).seen&&at(5,1).seen);
     check('minimap: a canvas is placed in the panel',!!d.querySelector('#map canvas'));
-    check('minimap: sized to the zone, cells taller than wide',
-          /px$/.test(d.querySelector('#map canvas').style.width)&&
-          parseInt(d.querySelector('#map canvas').style.height)*6>parseInt(d.querySelector('#map canvas').style.width)*2);
+    {
+      // it fills the panel, so its bitmap follows the panel's width; a 6x2 zone's cells stay 1.5 times taller than wide
+      const cv=d.querySelector('#map canvas');
+      check('minimap: fills its panel rather than a fixed size',!/px$/.test(cv.style.width),cv.style.width);
+      check('minimap: cells taller than wide, as the game draws them',
+            Math.abs((cv.height/2)/(cv.width/6)-1.5)<0.05,cv.width+'x'+cv.height);
+    }
     check('minimap: no errors with no canvas support',errs.length===0,errs.join(' | '));
     dom.window.close();
 
@@ -447,6 +451,35 @@ async function load(opts={}){
     near=d.getElementById('near');
     check('nearby: plants and pools can be hidden',
           !/witchwood/.test(near.textContent)&&!/salt/.test(near.textContent)&&/merchant/.test(near.textContent));
+    dom.window.close();
+
+    // a meadow: things you can pick up lead, one row each, and repeated scenery folds into one row
+    DATA.nearby=[
+      {name:'grass',kind:'plant',col:'g',distance:1,dir:'N'},
+      {name:'grass',kind:'plant',col:'g',distance:1,dir:'S'},
+      {name:'table',kind:'container',col:'w',distance:1,dir:'E'},
+      {name:'grass',kind:'plant',col:'g',distance:2,dir:'W'},
+      {name:'knife',kind:'item',col:'c',distance:6,dir:'E'},
+      {name:'knife',kind:'item',col:'c',distance:7,dir:'W'}];
+    writeData(0,2);
+    ({dom,errs,d}=await load());
+    near=d.getElementById('near');rows=near.querySelectorAll('.row');
+    check('nearby: things you can pick up come first',/knife/.test(rows[0].textContent)&&/6 away/.test(rows[0].textContent),rows[0].textContent);
+    check('nearby: each item keeps its own row',/knife/.test(rows[1].textContent)&&/7 away/.test(rows[1].textContent),rows[1].textContent);
+    check('nearby: a line between items and the rest',!!near.querySelector('.sep'));
+    check('nearby: repeated scenery folds into one row with a count, placed at the nearest',
+          rows.length===4&&/grass\s*\u00D73/.test(rows[2].textContent)&&/adjacent/.test(rows[2].textContent),
+          [].map.call(rows,r=>r.textContent).join(' | '));
+    check('nearby: a single thing has no count',/table/.test(rows[3].textContent)&&!/\u00D7/.test(rows[3].textContent));
+    dom.window.close();
+
+    DATA.nearby=[];
+    for(let i=0;i<25;i++)DATA.nearby.push({name:'arrow '+i,kind:'item',col:'y',distance:i+1,dir:'E'});
+    DATA.nearby.push({name:'stairs down',kind:'stairs',col:'y',distance:2,dir:'N'});
+    writeData(0,2);
+    ({dom,errs,d}=await load());
+    rows=d.getElementById('near').querySelectorAll('.row');
+    check('nearby: no more than twenty rows',rows.length===20,rows.length+' rows');
     dom.window.close();
 
     DATA.nearby=[{name:'witchwood tree',kind:'plant',col:'g',distance:3,dir:'N'}];
@@ -762,6 +795,40 @@ async function load(opts={}){
   errs=errs.filter(e=>!/Could not load script: .*hud_data\.js/.test(e));   // that failure is the point
   check('portal address: no other errors',errs.length===0,errs.join(' | '));
   dom.window.close();
+
+  // --- narrow windows: columns that do not fit stack under the last one that does, in their order,
+  // rather than wrapping under the first column
+  {
+    writeData(0,1);
+    ({dom,errs,d}=await load());
+    const w=dom.window;
+    const at=width=>{Object.defineProperty(w,'innerWidth',{value:width,configurable:true});w.dispatchEvent(new w.Event('resize'));};
+    const tracks=[].slice.call(d.getElementById('cols').children);
+    const inTrack=t=>[].slice.call(tracks[t].children).filter(z=>!z.classList.contains('vacant')).map(z=>z.dataset.zone).join(',');
+    const layout=()=>[0,1,2].map(inTrack).join(' / ');
+    at(1400);
+    check('columns: wide, each column its own track',layout()==='c1 / c2 / c3',layout());
+    at(1000);
+    check('columns: two fit, the third stacks under the second',layout()==='c1 / c2,c3 / ',layout());
+    check('columns: the unused track is hidden',tracks[2].classList.contains('vacant'));
+    at(700);
+    check('columns: one fits, all stack in order',layout()==='c1,c2,c3 /  / ',layout());
+    at(1400);
+    check('columns: widening puts each back',layout()==='c1 / c2 / c3',layout());
+    check('columns: the saved layout is untouched by it all',
+          !w.localStorage.getItem('qudhud.layout')||JSON.parse(w.localStorage.getItem('qudhud.layout')).c3.indexOf('map')>=0);
+    check('columns: no errors',errs.length===0,errs.join(' | '));
+    dom.window.close();
+
+    // a column with every panel hidden takes no track, so the others use the room
+    ({dom,errs,d}=await load({store:{'qudhud.hidden':JSON.stringify(['survival','gear','attrs'])}}));
+    const w2=dom.window;
+    Object.defineProperty(w2,'innerWidth',{value:1000,configurable:true});w2.dispatchEvent(new w2.Event('resize'));
+    const t2=[].slice.call(d.getElementById('cols').children);
+    const shown2=[0,1,2].map(t=>[].slice.call(t2[t].children).filter(z=>!z.classList.contains('vacant')).map(z=>z.dataset.zone).join(',')).join(' / ');
+    check('columns: an emptied column gives its track to the next',shown2==='c1 / c3 / ',shown2);
+    dom.window.close();
+  }
 
   // --- storage paths: a saved layout must be reapplied, and options must persist
   writeData(0,1);
