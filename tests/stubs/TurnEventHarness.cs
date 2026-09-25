@@ -38,6 +38,16 @@ namespace QudHUDTests
                 Check("the first update is noted on its own", note != null && note.Contains("Slowest parts: "), note);
                 if (note != null) Console.WriteLine("INFO  " + note.Substring(9));
                 Check("and leaves nothing counted toward a slow step", Builds() == 0, Builds() + " builds");
+
+                // a step that cost too much says which parts it went on
+                QudHUD.Hud.Update(player, true);
+                typeof(QudHUD.Hud).GetField("spentMs", Hidden).SetValue(null, 150.0);
+                QudHUD.Hud.StepDone();
+                string slow = UnityEngine.Debug.Lines.Find(l => l.StartsWith("[QudHUD] Slow step: "));
+                Check("a slow step is noted with its slowest parts",
+                      slow != null && slow.Contains("Slowest parts: ") && slow.Contains(" ms, "), slow);
+                if (slow != null) Console.WriteLine("INFO  " + slow.Substring(9));
+                Check("and counting starts afresh", Builds() == 0, Builds() + " builds");
                 QudHUD.Hud.Attach(player);
                 Check("only the first of the session is noted",
                       UnityEngine.Debug.Lines.FindAll(l => l.StartsWith("[QudHUD] First update: ")).Count == 1, "");

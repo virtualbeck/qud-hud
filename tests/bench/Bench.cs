@@ -284,7 +284,7 @@ namespace QudHUDBench
 
                 var d = new Dictionary<string, object>();
                 var alerts = new List<Dictionary<string, object>>();
-                string[] sections = { "BuildPlayer", "BuildPlace", "BuildAttributes", "BuildCombat", "BuildSurvival",
+                string[] sections = { "BuildPlayer", "BuildZone", "BuildClock", "BuildAttributes", "BuildCombat", "BuildSurvival",
                                       "BuildEffects", "BuildAbilities", "BuildGear", "BuildHostiles", "BuildCompanions" };
                 Console.WriteLine("runtime: " + (Type.GetType("Mono.Runtime") != null ? "Mono" : "CoreCLR") + ", " + n + " runs each");
                 double total = 0;
@@ -292,7 +292,7 @@ namespace QudHUDBench
                 {
                     MethodInfo mi = snap.GetMethod(s, Hidden);
                     ParameterInfo[] ps = mi.GetParameters();
-                    object[] a = ps.Length == 3 ? new object[] { p, d, alerts } : new object[] { p, d };
+                    object[] a = ps.Length == 3 ? new object[] { p, d, alerts } : ps.Length == 2 ? new object[] { p, d } : new object[] { d };
                     double us = Time(n, () => { alerts.Clear(); mi.Invoke(null, a); });
                     total += us;
                     Console.WriteLine(string.Format("  {0,-18}{1,9:0.0} us", s, us));

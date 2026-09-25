@@ -118,19 +118,13 @@ namespace QudHUD
             // on its own, part by part, and kept out of the slow step note, which is about turns.
             bool first = !timedFirst;
             timedFirst = true;
-            if (first) Snapshot.Timing = new Dictionary<string, double>();
+            Snapshot.Slowest(0);
             var took = System.Diagnostics.Stopwatch.StartNew();
             Update(player, true);
+            string parts = Snapshot.Slowest(4);
             if (first)
-            {
-                var parts = new List<KeyValuePair<string, double>>(Snapshot.Timing);
-                Snapshot.Timing = null;
-                parts.Sort((a, b) => b.Value.CompareTo(a.Value));
-                var sb = new StringBuilder("[QudHUD] First update: " + Ms(took.Elapsed.TotalMilliseconds) + ", once per session. Finding and compiling " +
-                    R.Resolved + " game members: " + Ms(R.ResolveMs) + ". Slowest parts:");
-                for (int i = 0; i < parts.Count && i < 4; i++) sb.Append(i == 0 ? " " : ", ").Append(parts[i].Key).Append(' ').Append(Ms(parts[i].Value));
-                UnityEngine.Debug.Log(sb.Append('.').ToString());
-            }
+                UnityEngine.Debug.Log("[QudHUD] First update: " + Ms(took.Elapsed.TotalMilliseconds) + ", once per session. Finding and compiling " +
+                    R.Resolved + " game members: " + Ms(R.ResolveMs) + ". Slowest parts: " + parts + ".");
             turnEvents = builds = 0;
             spentMs = 0;
         }
@@ -168,20 +162,32 @@ namespace QudHUD
             {
                 lastSlowNote = now;
                 UnityEngine.Debug.Log("[QudHUD] Slow step: " + Ms(spentMs) + " in " + builds +
-                    " update(s) over " + turnEvents + " turn event(s).");
+                    " update(s) over " + turnEvents + " turn event(s). Slowest parts: " + Snapshot.Slowest(4) + ".");
             }
+            Snapshot.Slowest(0);
             turnEvents = builds = 0;
             spentMs = 0;
         }
 
         static void Write(GameObject player, DateTime now)
         {
-            string json;
-            try { json = Json.Write(Snapshot.Build(player)); }
+            Dictionary<string, object> data;
+            try { data = Snapshot.Build(player); }
             catch (Exception ex) { Log("build", ex); return; }
+            long since = System.Diagnostics.Stopwatch.GetTimestamp();
+            string json;
+            try { json = Json.Write(data); }
+            catch (Exception ex) { Log("build", ex); return; }
+            Snapshot.Count("json", since);
             lastWrite = now;
             if (json == lastJson) return;
+            since = System.Diagnostics.Stopwatch.GetTimestamp();
+            try { Save(json); }
+            finally { Snapshot.Count("file write", since); }
+        }
 
+        static void Save(string json)
+        {
             try
             {
                 seq++;
@@ -314,7 +320,8 @@ namespace QudHUD
         {
 
             Section("player", () => BuildPlayer(p, d, alerts));
-            Section("place", () => BuildPlace(p, d));
+            Section("zone name", () => BuildZone(p, d));
+            Section("clock", () => BuildClock(d));
             Section("attributes", () => BuildAttributes(p, d));
             Section("combat", () => BuildCombat(p, d));
             Section("survival", () => BuildSurvival(p, d, alerts));
@@ -354,14 +361,35 @@ namespace QudHUD
             list.AddRange(sorted);
         }
 
-        // Set while the first update of a session is timed part by part.
-        internal static Dictionary<string, double> Timing;
+        // Time spent in each part since the player last had control, so a slow step or the first update
+        // can say where it went. Two clock reads a part, which costs nothing next to the part itself.
+        internal static readonly Dictionary<string, double> Spent = new Dictionary<string, double>(R.Keys);
+
+        internal static void Count(string name, long since)
+        {
+            double ms = (System.Diagnostics.Stopwatch.GetTimestamp() - since) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+            double had;
+            Spent.TryGetValue(name, out had);
+            Spent[name] = had + ms;
+        }
+
+        // The slowest parts, for a note in Player.log; and starts counting afresh.
+        internal static string Slowest(int n)
+        {
+            var parts = new List<KeyValuePair<string, double>>(Spent);
+            Spent.Clear();
+            parts.Sort((a, b) => b.Value.CompareTo(a.Value));
+            var sb = new StringBuilder();
+            for (int i = 0; i < parts.Count && i < n; i++)
+                sb.Append(i == 0 ? "" : ", ").Append(parts[i].Key).Append(' ').Append(parts[i].Value.ToString("0", CultureInfo.InvariantCulture)).Append(" ms");
+            return sb.ToString();
+        }
 
         static void Section(string name, Action a)
         {
-            var took = Timing != null ? System.Diagnostics.Stopwatch.StartNew() : null;
+            long since = System.Diagnostics.Stopwatch.GetTimestamp();
             try { a(); } catch (Exception ex) { Hud.Log("section " + name, ex); }
-            if (took != null) Timing[name] = took.Elapsed.TotalMilliseconds;
+            Count(name, since);
         }
 
         // dismiss names a reminder the page may let the player silence, for things that are not
@@ -443,7 +471,7 @@ namespace QudHUD
             }
         }
 
-        static void BuildPlace(GameObject p, Dictionary<string, object> d)
+        static void BuildZone(GameObject p, Dictionary<string, object> d)
         {
             var zone = new Dictionary<string, object>(R.Keys);
             object z = R.Get(p, "CurrentZone");
@@ -461,7 +489,10 @@ namespace QudHUD
                 zone["depth"] = zz > 10 ? zz - 10 : 0;
             }
             d["zone"] = zone;
+        }
 
+        static void BuildClock(Dictionary<string, object> d)
+        {
             var clock = new Dictionary<string, object>(R.Keys);
             clock["time"] = R.Str(R.SCall("XRL.World.Calendar", "GetTime"));
             clock["day"] = R.Str(R.SCall("XRL.World.Calendar", "GetDay"));
