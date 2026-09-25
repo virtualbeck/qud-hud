@@ -111,6 +111,10 @@ run parts of it against stand-ins for the game in `tests/stubs`. Those stand-ins
 uses the game rather than the game itself, so they prove the mod's own code, not that the game's API
 still matches; `--check` is what tests that. Without a compiler those tests are skipped.
 
+`python tests/bench/run.py` times each part of an update against a busy stand-in zone, under Mono
+(what the game runs on) and .NET, whichever are installed. The stand-in's own calls cost nothing, so
+the numbers are the mod's overhead rather than what a turn costs in the real game.
+
 ## Layout
 
 | | |

@@ -432,13 +432,13 @@ class CSharp(Temp):
                                   sorted(self.managed.glob("*.dll")), self.tmp / "v5.dll", extra)
         self.assertTrue(ok, output)
 
-    def run_harness(self, name):
+    def run_harness(self, name, source=None, args=()):
         """Compile a harness together with the mod and the stand-ins, run it, return its output."""
         dotnet = self.kind == "dotnet"
         exe = self.tmp / (name + (".dll" if dotnet else ".exe"))
         ok, output = b.compile_cs(
             self.compiler,
-            [REPO / "tests/stubs/Game.cs", b.DIST / "QudHUD/QudHUD.cs", REPO / f"tests/stubs/{name}.cs"],
+            [REPO / "tests/stubs/Game.cs", b.DIST / "QudHUD/QudHUD.cs", source or REPO / f"tests/stubs/{name}.cs"],
             self.refs, exe, ["-langversion:5"] if dotnet else [], target="exe")
         self.assertTrue(ok, output)
         if dotnet:
@@ -448,7 +448,7 @@ class CSharp(Temp):
             run = [self.compiler[0], "exec", str(exe)]
         else:
             run = [str(exe)]
-        r = subprocess.run(run, capture_output=True, text=True)
+        r = subprocess.run(run + list(args), capture_output=True, text=True)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn("all green", r.stdout)
         return r.stdout
@@ -456,6 +456,14 @@ class CSharp(Temp):
     def test_message_log_reader(self):
         # actually runs the reader against stand-in message queues, rather than only compiling it
         self.run_harness("MessageLogHarness")
+
+    def test_reflection_layer_and_json(self):
+        # every game lookup goes through R, which caches and compiles; see tests/stubs/ReflectionHarness.cs
+        self.run_harness("ReflectionHarness")
+
+    def test_benchmark_still_runs(self):
+        # tests/bench/run.py is for reading numbers; this only keeps it compiling and running
+        self.run_harness("Bench", REPO / "tests/bench/Bench.cs", ["2"])
 
     def test_turn_events_do_not_rebuild_every_turn(self):
         # one world map step passes hundreds of game turns; see tests/stubs/TurnEventHarness.cs

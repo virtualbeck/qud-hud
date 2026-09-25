@@ -1,6 +1,7 @@
 # Changelog
 
 ## 1.0.10
+- Changed: the mod does its work each turn about three times faster, measured on Mono, which is what the game runs on. It reads the game through reflection, and each lookup is now resolved and compiled once instead of on every read. It also asks the game less: the zone's creature list once per turn instead of twice, an item's name only when there is something to say about it, and a creature's effects without the details text only your own Effects panel shows.
 - Fixed: travelling on the world map was noticeably slower with the mod enabled, up to a second between a keypress and the move. One step there passes hundreds of game turns, and the mod rebuilt and rewrote its data on every one of them. It now updates once when you get control back, and a few times a second while time passes without input, as when resting. A step that still costs noticeable time is noted in Player.log.
 - Fixed: on Linux with a Flatpak browser, such as the Firefox that Bazzite ships, the page sat on "Waiting for Caves of Qud" forever with the game running. The sandbox hands the browser the page alone, not the data file beside it. The page now recognises this and says how to grant access, and the READMEs give the Linux location, `~/QudHUD`, rather than `Documents/QudHUD`.
 - Fixed: dismissed unspent point reminders came back when you levelled up, and all of them came back after playing another character. A dismissal now belongs to one character and one kind of point, and lasts until that character spends them.

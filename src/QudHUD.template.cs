@@ -257,10 +257,39 @@ namespace QudHUD
 
         static int typeNegative = -1, typeDisease = -1;
 
+        // Every creature in the zone, asked of the game once per update. The game walks the whole zone to
+        // answer, and both the hostile and the companion lists need it.
+        static List<object> creatures;
+        static bool creaturesRead;
+
+        static List<object> Creatures(GameObject p)
+        {
+            if (creaturesRead) return creatures;
+            creaturesRead = true;
+            IEnumerable objs = R.Call(R.Get(p, CurrentZone), "GetObjectsWithPart", "Brain") as IEnumerable;
+            if (objs == null) return creatures = null;
+            creatures = new List<object>();
+            foreach (object o in objs) if (o != null && !ReferenceEquals(o, p)) creatures.Add(o);
+            return creatures;
+        }
+
         public static Dictionary<string, object> Build(GameObject p)
         {
-            var d = new Dictionary<string, object>();
+            var d = new Dictionary<string, object>(R.Keys);
             var alerts = new List<Dictionary<string, object>>();
+            creaturesRead = false;
+            try { Sections(p, d, alerts); }
+            finally { creatures = null; creaturesRead = false; }   // never hold the zone's creatures between turns
+
+            alerts.Sort((a, b) => ((int)b["sev"]).CompareTo((int)a["sev"]));
+            var list = new List<object>();
+            foreach (var a in alerts) list.Add(a);
+            d["alerts"] = list;
+            return d;
+        }
+
+        static void Sections(GameObject p, Dictionary<string, object> d, List<Dictionary<string, object>> alerts)
+        {
 
             Section("player", () => BuildPlayer(p, d, alerts));
             Section("place", () => BuildPlace(p, d));
@@ -274,12 +303,33 @@ namespace QudHUD
             Section("companions", () => BuildCompanions(p, d));
             Section("messages", () => d["messages"] = MessageLog.Recent(12));
             Section("surroundings", () => Surroundings.Build(p, d));
+        }
 
-            alerts.Sort((a, b) => ((int)b["sev"]).CompareTo((int)a["sev"]));
-            var list = new List<object>();
-            foreach (var a in alerts) list.Add(a);
-            d["alerts"] = list;
-            return d;
+        // Orders entries by rank, then by a text field with its markup removed. Each entry is stripped
+        // once rather than on every comparison, and equals keep the order they came in.
+        static void SortBy(List<object> list, Func<Dictionary<string, object>, int> rank, Func<Dictionary<string, object>, string> text)
+        {
+            int n = list.Count;
+            var order = new int[n];
+            var ranks = new int[n];
+            var keys = new string[n];
+            for (int i = 0; i < n; i++)
+            {
+                var e = (Dictionary<string, object>)list[i];
+                order[i] = i;
+                ranks[i] = rank == null ? 0 : rank(e);
+                keys[i] = R.Strip(text(e));
+            }
+            Array.Sort(order, (x, y) =>
+            {
+                int c = ranks[x].CompareTo(ranks[y]);
+                if (c == 0) c = string.Compare(keys[x], keys[y], StringComparison.OrdinalIgnoreCase);
+                return c != 0 ? c : x.CompareTo(y);
+            });
+            var sorted = new object[n];
+            for (int i = 0; i < n; i++) sorted[i] = list[order[i]];
+            list.Clear();
+            list.AddRange(sorted);
         }
 
         static void Section(string name, Action a)
@@ -292,30 +342,36 @@ namespace QudHUD
         // the wording, which changes with the number in it.
         static void Alert(List<Dictionary<string, object>> alerts, int sev, string text, string dismiss = null)
         {
-            var a = new Dictionary<string, object> { { "sev", sev }, { "text", text } };
+            var a = new Dictionary<string, object>(R.Keys) { { "sev", sev }, { "text", text } };
             if (dismiss != null) a["dis"] = dismiss;
             alerts.Add(a);
         }
 
         // Stats
 
+        // read for every creature every turn, so held rather than looked up by name
+        static readonly R.Member Statistics = R.M("Statistics"), Value = R.M("Value"), BaseValue = R.M("BaseValue"),
+            CurrentCell = R.M("CurrentCell"), CurrentZone = R.M("CurrentZone"), CellVisible = R.M("IsVisible"),
+            X = R.M("X"), Y = R.M("Y"), Effects = R.M("Effects"), ShortDisplayName = R.M("ShortDisplayName");
+
         static object StatObj(object o, string name)
         {
-            IDictionary dict = R.Get(o, "Statistics") as IDictionary;
-            if (dict == null || !dict.Contains(name)) return null;
+            IDictionary dict = R.Get(o, Statistics) as IDictionary;
+            if (dict == null) return null;
+            // one lookup rather than Contains and then the indexer; a missing key reads as null
             return dict[name];
         }
-        static int SV(object o, string name, int def = 0) { return R.Int(R.Get(StatObj(o, name), "Value"), def); }
-        static int SB(object o, string name, int def = 0) { return R.Int(R.Get(StatObj(o, name), "BaseValue"), def); }
+        static int SV(object o, string name, int def = 0) { return R.Int(R.Get(StatObj(o, name), Value), def); }
+        static int SB(object o, string name, int def = 0) { return R.Int(R.Get(StatObj(o, name), BaseValue), def); }
         static object SVOrNull(object o, string name)
         {
             object s = StatObj(o, name);
-            return s == null ? null : (object)R.Int(R.Get(s, "Value"), 0);
+            return s == null ? null : (object)R.Int(R.Get(s, Value), 0);
         }
 
         public static string Name(object o)
         {
-            string n = R.Str(R.Get(o, "ShortDisplayName"));
+            string n = R.Str(R.Get(o, ShortDisplayName));
             if (string.IsNullOrEmpty(n)) n = R.Str(R.Get(o, "DisplayName"));
             if (string.IsNullOrEmpty(n)) n = R.Str(R.Get(o, "Blueprint"));
             return n ?? "something";
@@ -323,7 +379,7 @@ namespace QudHUD
 
         static void BuildPlayer(GameObject p, Dictionary<string, object> d, List<Dictionary<string, object>> alerts)
         {
-            var pl = new Dictionary<string, object>();
+            var pl = new Dictionary<string, object>(R.Keys);
             string name = R.Str(R.Get(R.SGet("XRL.The", "Game"), "PlayerName"));
             if (string.IsNullOrEmpty(name)) name = R.Str(R.Get(p, "DisplayNameOnly"));
             if (string.IsNullOrEmpty(name)) name = Name(p);
@@ -362,7 +418,7 @@ namespace QudHUD
 
         static void BuildPlace(GameObject p, Dictionary<string, object> d)
         {
-            var zone = new Dictionary<string, object>();
+            var zone = new Dictionary<string, object>(R.Keys);
             object z = R.Get(p, "CurrentZone");
             if (z != null)
             {
@@ -379,7 +435,7 @@ namespace QudHUD
             }
             d["zone"] = zone;
 
-            var clock = new Dictionary<string, object>();
+            var clock = new Dictionary<string, object>(R.Keys);
             clock["time"] = R.Str(R.SCall("XRL.World.Calendar", "GetTime"));
             clock["day"] = R.Str(R.SCall("XRL.World.Calendar", "GetDay"));
             clock["month"] = R.Str(R.SCall("XRL.World.Calendar", "GetMonth"));
@@ -393,7 +449,7 @@ namespace QudHUD
             {
                 if (StatObj(p, AttrKeys[i]) == null) continue;
                 int v = SV(p, AttrKeys[i]);
-                list.Add(new Dictionary<string, object> {
+                list.Add(new Dictionary<string, object>(R.Keys) {
                     { "label", AttrLabels[i] }, { "value", v }, { "base", SB(p, AttrKeys[i]) },
                     { "mod", (int)Math.Floor((v - 16) / 2.0) }
                 });
@@ -403,7 +459,7 @@ namespace QudHUD
 
         static void BuildCombat(GameObject p, Dictionary<string, object> d)
         {
-            var c = new Dictionary<string, object>();
+            var c = new Dictionary<string, object>(R.Keys);
             object av = R.SCall("XRL.Rules.Stats", "GetCombatAV", p);
             object dv = R.SCall("XRL.Rules.Stats", "GetCombatDV", p);
             object ma = R.SCall("XRL.Rules.Stats", "GetCombatMA", p);
@@ -415,18 +471,18 @@ namespace QudHUD
             c["moveSpeed"] = ms == null ? null : (object)(200 - (int)ms);
             d["combat"] = c;
 
-            d["resist"] = new Dictionary<string, object> {
+            d["resist"] = new Dictionary<string, object>(R.Keys) {
                 { "heat", SVOrNull(p, "HeatResistance") }, { "cold", SVOrNull(p, "ColdResistance") },
                 { "acid", SVOrNull(p, "AcidResistance") }, { "elec", SVOrNull(p, "ElectricResistance") }
             };
-            d["points"] = new Dictionary<string, object> {
+            d["points"] = new Dictionary<string, object>(R.Keys) {
                 { "ap", SV(p, "AP") }, { "sp", SV(p, "SP") }, { "mp", SV(p, "MP") }
             };
         }
 
         static void BuildSurvival(GameObject p, Dictionary<string, object> d, List<Dictionary<string, object>> alerts)
         {
-            var s = new Dictionary<string, object>();
+            var s = new Dictionary<string, object>(R.Keys);
 
             object stomach = R.Call(p, "GetPart", "Stomach");
             if (stomach != null)
@@ -488,8 +544,10 @@ namespace QudHUD
             typeDisease = R.Int(R.SGet("XRL.World.Effect", "TYPE_DISEASE"), 0);
         }
 
-        // Returns null for effects the game hides from the player.
-        static Dictionary<string, object> DescribeEffect(object fx)
+        // Returns null for effects the game hides from the player. Brief leaves out the duration and the
+        // details text, which only the player's own Effects panel shows, and which cost the game a
+        // formatted string each.
+        static Dictionary<string, object> DescribeEffect(object fx, bool brief = false)
         {
             EnsureEffectTypes();
             string desc = R.Str(R.Call(fx, "GetDescription"));
@@ -498,20 +556,22 @@ namespace QudHUD
             int type = R.Int(R.Call(fx, "GetEffectType"), 0);
             bool disease = Diseases.Contains(cls) || (typeDisease > 0 && (type & typeDisease) != 0);
             bool negative = disease || Disabling.Contains(cls) || KnownBad.Contains(cls) || (typeNegative > 0 && (type & typeNegative) != 0);
-            return new Dictionary<string, object> {
+            var e = new Dictionary<string, object>(R.Keys) {
                 { "name", desc },
                 { "class", cls },
-                { "duration", R.Int(R.Get(fx, "Duration"), 0) },
-                { "details", R.Str(R.Call(fx, "GetDetails")) },
                 { "negative", negative },
                 { "disease", disease }
             };
+            if (brief) return e;
+            e["duration"] = R.Int(R.Get(fx, "Duration"), 0);
+            e["details"] = R.Str(R.Call(fx, "GetDetails"));
+            return e;
         }
 
         static List<object> EffectsOf(object o)
         {
             var list = new List<object>();
-            IEnumerable fxs = (R.Get(o, "Effects") ?? R.Get(o, "_Effects")) as IEnumerable;
+            IEnumerable fxs = (R.Get(o, Effects) ?? R.Get(o, "_Effects")) as IEnumerable;
             if (fxs == null) return list;
             foreach (object fx in fxs) if (fx != null) list.Add(fx);
             return list;
@@ -532,14 +592,7 @@ namespace QudHUD
                 else if ((bool)e["negative"]) Alert(alerts, 2, "Suffering: " + nm);
             }
             // Harmful first, then by name.
-            list.Sort((a, b) =>
-            {
-                var x = (Dictionary<string, object>)a; var y = (Dictionary<string, object>)b;
-                int rx = (bool)x["disease"] ? 0 : (bool)x["negative"] ? 1 : 2;
-                int ry = (bool)y["disease"] ? 0 : (bool)y["negative"] ? 1 : 2;
-                if (rx != ry) return rx.CompareTo(ry);
-                return string.Compare(R.Strip((string)x["name"]), R.Strip((string)y["name"]), StringComparison.OrdinalIgnoreCase);
-            });
+            SortBy(list, e => (bool)e["disease"] ? 0 : (bool)e["negative"] ? 1 : 2, e => (string)e["name"]);
             d["effects"] = list;
         }
 
@@ -558,7 +611,7 @@ namespace QudHUD
                     object enabledO = R.Get(entry, "Enabled");
                     object turnsO = R.Get(entry, "CooldownTurns") ?? R.Get(entry, "CooldownRounds");
                     int cd = R.Int(R.Get(entry, "Cooldown"), 0);
-                    list.Add(new Dictionary<string, object> {
+                    list.Add(new Dictionary<string, object>(R.Keys) {
                         { "name", name },
                         { "enabled", enabledO == null || R.Bool(enabledO) },
                         { "cooldown", cd > 0 || R.Int(turnsO, 0) > 0 },
@@ -568,8 +621,7 @@ namespace QudHUD
                     });
                 }
             }
-            list.Sort((a, b) => string.Compare(R.Strip((string)((Dictionary<string, object>)a)["name"]),
-                R.Strip((string)((Dictionary<string, object>)b)["name"]), StringComparison.OrdinalIgnoreCase));
+            SortBy(list, null, e => (string)e["name"]);
             d["abilities"] = list;
         }
 
@@ -614,20 +666,23 @@ namespace QudHUD
                 foreach (object item in eq)
                 {
                     if (item == null || !seen.Add(item)) continue;
-                    string iname = Name(item);
+                    // an item's display name costs the game real work, so it is only made for an item
+                    // that has something to report
+                    string known = null;
+                    Func<string> itemName = () => known ?? (known = Name(item));
 
                     foreach (object fx in EffectsOf(item))
                     {
-                        Dictionary<string, object> e = DescribeEffect(fx);
+                        Dictionary<string, object> e = DescribeEffect(fx, true);
                         if (e == null || !(bool)e["negative"]) continue;
-                        issues.Add(new Dictionary<string, object> { { "item", iname }, { "issue", e["name"] } });
-                        Alert(alerts, 2, R.Strip(iname) + " is " + R.Strip((string)e["name"]));
+                        issues.Add(new Dictionary<string, object>(R.Keys) { { "item", itemName() }, { "issue", e["name"] } });
+                        Alert(alerts, 2, R.Strip(itemName()) + " is " + R.Strip((string)e["name"]));
                     }
 
                     if (R.Call(item, "GetPart", "FungalInfection") != null || R.Bool(R.Call(item, "HasTag", "FungalInfection")))
                     {
-                        issues.Add(new Dictionary<string, object> { { "item", iname }, { "issue", "{{m|fungal infection}}" } });
-                        Alert(alerts, 1, "Fungal infection: " + R.Strip(iname));
+                        issues.Add(new Dictionary<string, object>(R.Keys) { { "item", itemName() }, { "issue", "{{m|fungal infection}}" } });
+                        Alert(alerts, 1, "Fungal infection: " + R.Strip(itemName()));
                     }
 
                     object socket = R.Call(item, "GetPart", "EnergyCellSocket");
@@ -636,8 +691,8 @@ namespace QudHUD
                         object cell = R.Get(socket, "Cell");
                         if (cell == null)
                         {
-                            cells.Add(new Dictionary<string, object> { { "item", iname }, { "empty", true } });
-                            Alert(alerts, 2, R.Strip(iname) + " has no energy cell");
+                            cells.Add(new Dictionary<string, object>(R.Keys) { { "item", itemName() }, { "empty", true } });
+                            Alert(alerts, 2, R.Strip(itemName()) + " has no energy cell");
                         }
                         else
                         {
@@ -645,16 +700,16 @@ namespace QudHUD
                             int charge = R.Int(R.Get(ec, "Charge"), 0), max = R.Int(R.Get(ec, "MaxCharge"), 0);
                             if (max > 0)
                             {
-                                cells.Add(new Dictionary<string, object> { { "item", iname }, { "charge", charge }, { "max", max } });
-                                if (charge <= 0) Alert(alerts, 2, R.Strip(iname) + ": energy cell empty");
-                                else if (charge < max * 0.15) Alert(alerts, 1, R.Strip(iname) + ": energy cell low (" + (int)Math.Round(100.0 * charge / max) + "%)");
+                                cells.Add(new Dictionary<string, object>(R.Keys) { { "item", itemName() }, { "charge", charge }, { "max", max } });
+                                if (charge <= 0) Alert(alerts, 2, R.Strip(itemName()) + ": energy cell empty");
+                                else if (charge < max * 0.15) Alert(alerts, 1, R.Strip(itemName()) + ": energy cell low (" + (int)Math.Round(100.0 * charge / max) + "%)");
                             }
                         }
                     }
                 }
             }
 
-            d["gear"] = new Dictionary<string, object> { { "missing", missing }, { "issues", issues }, { "cells", cells } };
+            d["gear"] = new Dictionary<string, object>(R.Keys) { { "missing", missing }, { "issues", issues }, { "cells", cells } };
         }
 
         // Rank for ordering only, never shown. Deliberately our own ladder rather than the game's
@@ -686,7 +741,7 @@ namespace QudHUD
         // per-turn FOV/light check the game itself renders from, so prefer that when it's available.
         static bool CurrentlyVisible(object o)
         {
-            object cellVisible = R.Call(R.Get(o, "CurrentCell"), "IsVisible");
+            object cellVisible = R.Call(R.Get(o, CurrentCell), CellVisible);
             if (cellVisible is bool) return (bool)cellVisible;
             return R.Bool(R.Call(o, "IsVisible"));
         }
@@ -697,10 +752,10 @@ namespace QudHUD
         // aren't available. hud.html maps this to an arrow glyph.
         internal static string Direction(GameObject p, object o)
         {
-            object pc = R.Get(p, "CurrentCell"), oc = R.Get(o, "CurrentCell");
+            object pc = R.Get(p, CurrentCell), oc = R.Get(o, CurrentCell);
             if (pc == null || oc == null) return null;
-            int dx = R.Int(R.Get(oc, "X"), 0) - R.Int(R.Get(pc, "X"), 0);
-            int dy = R.Int(R.Get(oc, "Y"), 0) - R.Int(R.Get(pc, "Y"), 0);
+            int dx = R.Int(R.Get(oc, X), 0) - R.Int(R.Get(pc, X), 0);
+            int dy = R.Int(R.Get(oc, Y), 0) - R.Int(R.Get(pc, Y), 0);
             if (dx == 0 && dy == 0) return "here";
             double deg = Math.Atan2(-dy, dx) * (180.0 / Math.PI);
             if (deg < 0) deg += 360;
@@ -723,9 +778,9 @@ namespace QudHUD
             foreach (object e in EffectsOf(o))
             {
                 if (R.Bool(R.Call(e, "SuppressInLookDisplay"))) continue;
-                Dictionary<string, object> described = DescribeEffect(e);
+                Dictionary<string, object> described = DescribeEffect(e, true);
                 if (described == null) continue;
-                fx.Add(new Dictionary<string, object> {
+                fx.Add(new Dictionary<string, object>(R.Keys) {
                     { "name", described["name"] },
                     { "negative", described["negative"] },
                     { "disease", described["disease"] }
@@ -764,15 +819,14 @@ namespace QudHUD
 
         static void BuildCompanions(GameObject p, Dictionary<string, object> d)
         {
-            object zone = R.Get(p, "CurrentZone");
-            IEnumerable objs = R.Call(zone, "GetObjectsWithPart", "Brain") as IEnumerable;
+            List<object> objs = Creatures(p);
             if (objs == null) { d["companions"] = null; return; }
 
             var found = new List<Dictionary<string, object>>();
             foreach (object o in objs)
             {
-                if (o == null || ReferenceEquals(o, p) || IsDead(o) || !IsCompanion(o, p)) continue;
-                var entry = new Dictionary<string, object> { { "name", Name(o) }, { "level", SV(o, "Level") } };
+                if (IsDead(o) || !IsCompanion(o, p)) continue;
+                var entry = new Dictionary<string, object>(R.Keys) { { "name", Name(o) }, { "level", SV(o, "Level") } };
                 // Out of sight, you know they exist but not where they are or how they are doing.
                 bool seen = CurrentlyVisible(o);
                 entry["seen"] = seen;
@@ -786,75 +840,79 @@ namespace QudHUD
             }
 
             // Those in sight first and nearest first, then the rest by name.
-            found.Sort((a, b) =>
-            {
-                bool sa = (bool)a["seen"], sb = (bool)b["seen"];
-                if (sa != sb) return sa ? -1 : 1;
-                if (sa) return ((int)a["distance"]).CompareTo((int)b["distance"]);
-                return string.Compare(R.Strip((string)a["name"]), R.Strip((string)b["name"]), StringComparison.OrdinalIgnoreCase);
-            });
             var list = new List<object>();
             foreach (var f in found) list.Add(f);
+            SortBy(list, e => (bool)e["seen"] ? (int)e["distance"] : int.MaxValue, e => (string)e["name"]);
             d["companions"] = list;
+        }
+
+        // What the hostile list is sorted by, kept beside the entry rather than in it. Hit points order
+        // the list even for creatures whose numbers the player cannot read, and never reach the page.
+        sealed class Foe
+        {
+            public Dictionary<string, object> Entry;
+            public string Rating, Name;
+            public int Danger, Hp, HpMax, Distance, Level, NearRank, DangerRank;
         }
 
         static void BuildHostiles(GameObject p, Dictionary<string, object> d, List<Dictionary<string, object>> alerts)
         {
-            object zone = R.Get(p, "CurrentZone");
-            IEnumerable objs = R.Call(zone, "GetObjectsWithPart", "Brain") as IEnumerable;
+            List<object> objs = Creatures(p);
             if (objs == null) { d["hostiles"] = null; return; }
 
-            var found = new List<Dictionary<string, object>>();
+            var found = new List<Foe>();
             foreach (object o in objs)
             {
-                if (o == null || ReferenceEquals(o, p) || IsDead(o) || !IsHostile(o, p)) continue;
-                if (!CurrentlyVisible(o)) continue;
-                int hp = SV(o, "Hitpoints"), hpMax = SB(o, "Hitpoints");
-                var entry = new Dictionary<string, object> {
-                    { "name", Name(o) },
-                    { "level", SV(o, "Level") },
-                    { "rating", Rating(o, p) },
-                    { "distance", R.Int(R.Call(p, "DistanceTo", o), 99) },
+                // in view before hostile: the game answers the first from the cell it already lit,
+                // and has to weigh up feelings for the second
+                if (IsDead(o) || !CurrentlyVisible(o) || !IsHostile(o, p)) continue;
+                var f = new Foe
+                {
+                    Hp = SV(o, "Hitpoints"), HpMax = SB(o, "Hitpoints"), Level = SV(o, "Level"),
+                    Distance = R.Int(R.Call(p, "DistanceTo", o), 99)
+                };
+                string rating = Rating(o, p);
+                f.Name = Name(o);
+                f.Rating = R.Strip(rating).Trim();
+                f.Danger = DangerRank(f.Rating);
+                f.Entry = new Dictionary<string, object>(R.Keys) {
+                    { "name", f.Name },
+                    { "level", f.Level },
+                    { "rating", rating },
+                    { "distance", f.Distance },
                     { "dir", Direction(p, o) }
                 };
-                AddCondition(p, o, entry, hp, hpMax);
-
-                // danger travels with the list so the page can re-sort by it; the rating it comes
-                // from is on screen anyway. Hit points order the list even for creatures whose
-                // numbers the player may not read, so that key is stripped before sending.
-                entry["_danger"] = DangerRank((string)entry["rating"]);
-                entry["_hp"] = hp;
-                entry["_hpMax"] = hpMax;
-                found.Add(entry);
+                AddCondition(p, o, f.Entry, f.Hp, f.HpMax);
+                found.Add(f);
             }
 
             // Two orderings. Nearest is what gets sent; the dangerous one is sent as a position per
             // creature so the page can switch without ever receiving the hit points behind it.
             // The difficulty rating alone is too blunt to order by: a high level character reads
             // everything as Trivial, which is why the size of the creature breaks the tie.
-            var byDanger = new List<Dictionary<string, object>>(found);
+            var byDanger = new List<Foe>(found);
             byDanger.Sort((a, b) =>
             {
-                int c = ((int)b["_danger"]).CompareTo((int)a["_danger"]);
+                int c = b.Danger.CompareTo(a.Danger);
                 if (c != 0) return c;
-                c = ((int)b["_hpMax"]).CompareTo((int)a["_hpMax"]);
+                c = b.HpMax.CompareTo(a.HpMax);
                 if (c != 0) return c;
-                c = ((int)a["distance"]).CompareTo((int)b["distance"]);
+                c = a.Distance.CompareTo(b.Distance);
                 if (c != 0) return c;
-                c = ((int)b["level"]).CompareTo((int)a["level"]);
+                c = b.Level.CompareTo(a.Level);
                 if (c != 0) return c;
-                return ((int)b["_hp"]).CompareTo((int)a["_hp"]);
+                return b.Hp.CompareTo(a.Hp);
             });
-            for (int i = 0; i < byDanger.Count; i++) byDanger[i]["dangerRank"] = i;
+            for (int i = 0; i < byDanger.Count; i++) byDanger[i].DangerRank = i;
 
             // Nearest first, then the more dangerous of equals, then whichever has more left in it.
             found.Sort((a, b) =>
             {
-                int c = ((int)a["distance"]).CompareTo((int)b["distance"]);
+                int c = a.Distance.CompareTo(b.Distance);
                 if (c != 0) return c;
-                c = ((int)b["_danger"]).CompareTo((int)a["_danger"]);
+                c = b.Danger.CompareTo(a.Danger);
                 if (c != 0) return c;
-                return ((int)b["_hp"]).CompareTo((int)a["_hp"]);
+                return b.Hp.CompareTo(a.Hp);
             });
 
             // Trivial creatures are left out of the two proximity alarms. To a character who has
@@ -865,10 +923,10 @@ namespace QudHUD
             int adjacent = 0, threats = 0, nearest = -1;
             for (int i = 0; i < found.Count; i++)
             {
-                found[i]["nearRank"] = i;
-                if ((int)found[i]["_danger"] == 1) continue;
+                found[i].NearRank = i;
+                if (found[i].Danger == 1) continue;
                 threats++;
-                int dist = (int)found[i]["distance"];
+                int dist = found[i].Distance;
                 if (nearest < 0) nearest = dist;
                 if (dist <= 1) adjacent++;
             }
@@ -879,22 +937,20 @@ namespace QudHUD
             // they are the same creatures.
             const int Shown = 15;
             var list = new List<object>();
-            foreach (var f in found)
+            foreach (Foe f in found)
             {
-                if ((int)f["nearRank"] >= Shown && (int)f["dangerRank"] >= Shown) continue;
-                f.Remove("_danger");
-                f.Remove("_hp");
-                f.Remove("_hpMax");
-                list.Add(f);
+                if (f.NearRank >= Shown && f.DangerRank >= Shown) continue;
+                f.Entry["nearRank"] = f.NearRank;
+                f.Entry["dangerRank"] = f.DangerRank;
+                list.Add(f.Entry);
             }
             d["hostiles"] = list;
 
             int dangerous = 0;
-            foreach (var f in found)
+            foreach (Foe f in found)
             {
-                string r = R.Strip((string)f["rating"]).Trim();
-                if ((r == "Impossible" || r == "Very Tough") && dangerous++ < 3)
-                    Alert(alerts, 2, R.Strip((string)f["name"]) + " in sight (" + r + ")");
+                if ((f.Rating == "Impossible" || f.Rating == "Very Tough") && dangerous++ < 3)
+                    Alert(alerts, 2, R.Strip(f.Name) + " in sight (" + f.Rating + ")");
             }
 
             if (adjacent > 0) Alert(alerts, 3, adjacent + " hostile" + (adjacent == 1 ? "" : "s") + " adjacent to you");
@@ -909,6 +965,7 @@ namespace QudHUD
     // build where those functions have moved.
     static class Health
     {
+        static readonly char[] ColourMarks = { '&', '{', '}', '|' };
         static Type strings;
         static bool searched;
 
@@ -929,7 +986,11 @@ namespace QudHUD
         static string Clean(string col)
         {
             if (col == null) return "";
-            return col.Replace("&", "").Replace("{", "").Replace("}", "").Replace("|", "").Trim();
+            // usually a bare letter already, which needs no copy
+            if (col.IndexOfAny(ColourMarks) < 0) return col.Trim();
+            var sb = new StringBuilder(col.Length);
+            foreach (char c in col) if (Array.IndexOf(ColourMarks, c) < 0) sb.Append(c);
+            return sb.ToString().Trim();
         }
 
         public static string Describe(object o, int hp, int max)
@@ -941,7 +1002,7 @@ namespace QudHUD
             // otherwise arrive here as loose numbers with its glyphs stripped out.
             if (!string.IsNullOrEmpty(word) && R.Strip(word).Trim().Length > 0 && !HasFigures(word))
             {
-                if (word.IndexOf("{{") >= 0) return word;  // already carries its own colour
+                if (word.IndexOf("{{", StringComparison.Ordinal) >= 0) return word;  // already carries its own colour
                 string col = Clean(R.Str(R.SCallT(strings, "HealthStatusColor", o)));
                 return col.Length > 0 ? "{{" + col + "|" + word + "}}" : word;
             }
@@ -1008,107 +1069,6 @@ namespace QudHUD
         }
     }
 
-    // Compiled accessors for the zone scan's hot path, which touches every cell and every object in view
-    // each turn. Plain reflection made a full lit zone cost about 30ms a scan, measured in
-    // tests/stubs/SurroundingsHarness.cs. Each accessor is compiled once per type and member; where
-    // compiling fails, or no exact match exists, it falls back to the ordinary reflection in R.
-    static class Fast
-    {
-        const BindingFlags Inst = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
-        static readonly Dictionary<Type, Dictionary<string, Func<object, object>>> getters =
-            new Dictionary<Type, Dictionary<string, Func<object, object>>>();
-        static readonly Dictionary<Type, Dictionary<string, Func<object, object>>> calls0 =
-            new Dictionary<Type, Dictionary<string, Func<object, object>>>();
-        static readonly Dictionary<Type, Dictionary<string, Func<object, object, object>>> calls1 =
-            new Dictionary<Type, Dictionary<string, Func<object, object, object>>>();
-
-        public static object Get(object o, string name)
-        {
-            if (o == null) return null;
-            Func<object, object> f = Cached(getters, o.GetType(), name, MakeGetter);
-            return f == null ? null : f(o);
-        }
-
-        public static object Call(object o, string name)
-        {
-            if (o == null) return null;
-            return Cached(calls0, o.GetType(), name, MakeCall0)(o);
-        }
-
-        public static object Call(object o, string name, string arg)
-        {
-            if (o == null) return null;
-            return Cached(calls1, o.GetType(), name, MakeCall1)(o, arg);
-        }
-
-        static T Cached<T>(Dictionary<Type, Dictionary<string, T>> cache, Type t, string name, Func<Type, string, T> make)
-        {
-            Dictionary<string, T> byName;
-            if (!cache.TryGetValue(t, out byName)) cache[t] = byName = new Dictionary<string, T>();
-            T f;
-            if (!byName.TryGetValue(name, out f)) byName[name] = f = make(t, name);
-            return f;
-        }
-
-        static Func<object, object> MakeGetter(Type t, string name)
-        {
-            MemberInfo m = null;
-            for (Type c = t; c != null && m == null; c = c.BaseType)
-            {
-                m = c.GetField(name, Inst | BindingFlags.DeclaredOnly);
-                if (m == null)
-                {
-                    PropertyInfo pi = c.GetProperty(name, Inst | BindingFlags.DeclaredOnly);
-                    if (pi != null && pi.CanRead && pi.GetIndexParameters().Length == 0) m = pi;
-                }
-            }
-            if (m == null) return null;
-            try
-            {
-                var o = Expression.Parameter(typeof(object), "o");
-                Expression access = Expression.MakeMemberAccess(Expression.Convert(o, m.DeclaringType), m);
-                return Expression.Lambda<Func<object, object>>(Expression.Convert(access, typeof(object)), o).Compile();
-            }
-            catch
-            {
-                return x => R.Get(x, name);
-            }
-        }
-
-        static Func<object, object> MakeCall0(Type t, string name)
-        {
-            MethodInfo mi = t.GetMethod(name, Inst, null, Type.EmptyTypes, null);
-            if (mi != null && mi.ReturnType != typeof(void))
-            {
-                try
-                {
-                    var o = Expression.Parameter(typeof(object), "o");
-                    Expression call = Expression.Call(Expression.Convert(o, mi.DeclaringType), mi);
-                    return Expression.Lambda<Func<object, object>>(Expression.Convert(call, typeof(object)), o).Compile();
-                }
-                catch { }
-            }
-            return x => R.Call(x, name);
-        }
-
-        static Func<object, object, object> MakeCall1(Type t, string name)
-        {
-            MethodInfo mi = t.GetMethod(name, Inst, null, new[] { typeof(string) }, null);
-            if (mi != null && mi.ReturnType != typeof(void))
-            {
-                try
-                {
-                    var o = Expression.Parameter(typeof(object), "o");
-                    var a = Expression.Parameter(typeof(object), "a");
-                    Expression call = Expression.Call(Expression.Convert(o, mi.DeclaringType), mi, Expression.Convert(a, typeof(string)));
-                    return Expression.Lambda<Func<object, object, object>>(Expression.Convert(call, typeof(object)), o, a).Compile();
-                }
-                catch { }
-            }
-            return (x, a) => R.Call(x, name, a);
-        }
-    }
-
     // What is around the player, as the game's own minimap and nearby objects window show it. One pass
     // over the zone feeds both. Every lookup goes through reflection and fails soft, and
     // `build.py --check` compiles tests/probe/GameApi.cs against the real game to say which of these
@@ -1122,6 +1082,11 @@ namespace QudHUD
     {
         const string Palette = "kKrRgGbBcCmMwWyYoO";
         const int NearbyMax = 20;
+
+        // asked of every cell and every object in view, so held here rather than looked up by name
+        static readonly R.Member IsVisible = R.M("IsVisible"), IsExplored = R.M("IsExplored"), ExploredFlag = R.M("Explored"),
+            Objects = R.M("Objects"), GetPart = R.M("GetPart"), Visible = R.M("Visible"), RenderLayer = R.M("RenderLayer"),
+            ColorString = R.M("ColorString");
 
         // What never changes about an object: its render part, whether it is a creature, and what kind
         // of nearby thing it is, if any. Held weakly, so the cache cannot keep a destroyed object (a
@@ -1160,7 +1125,7 @@ namespace QudHUD
 
             d["nearby"] = nearby;
             if (mapCells == null) { d["map"] = null; return; }
-            d["map"] = new Dictionary<string, object> {
+            d["map"] = new Dictionary<string, object>(R.Keys) {
                 { "w", width }, { "h", height }, { "px", px }, { "py", py }, { "c", mapCells }, { "v", mapSeen }
             };
         }
@@ -1192,7 +1157,7 @@ namespace QudHUD
                 if (cell != null)
                 {
                     any = true;
-                    visible = R.Bool(Fast.Call(cell, "IsVisible"));
+                    visible = R.Bool(R.Call(cell, IsVisible));
                     // anything in view is explored, even if the game's own flag cannot be read
                     if (visible) explored[i] = true;
                     else if (!explored[i]) explored[i] = Explored(cell);
@@ -1230,7 +1195,7 @@ namespace QudHUD
                 if (list.Count >= NearbyMax) break;
                 if (f.Info.Creature && (Snapshot.IsDead(f.O) || Snapshot.IsHostile(f.O, p) || Snapshot.IsCompanion(f.O, p)))
                     continue;
-                list.Add(new Dictionary<string, object> {
+                list.Add(new Dictionary<string, object>(R.Keys) {
                     { "name", Snapshot.Name(f.O) },
                     { "kind", f.Info.Creature ? "creature" : f.Info.Kind },
                     { "col", f.Col.ToString() },
@@ -1243,16 +1208,16 @@ namespace QudHUD
 
         static bool Explored(object cell)
         {
-            object e = Fast.Call(cell, "IsExplored");
+            object e = R.Call(cell, IsExplored);
             if (e is bool) return (bool)e;
-            return R.Bool(Fast.Get(cell, "Explored"));
+            return R.Bool(R.Get(cell, ExploredFlag));
         }
 
         static Info About(object o)
         {
             Info info;
             if (infos.TryGetValue(o, out info)) return info;
-            info = new Info { Render = Fast.Call(o, "GetPart", "Render"), Creature = Fast.Call(o, "GetPart", "Brain") != null };
+            info = new Info { Render = R.Call(o, GetPart, "Render"), Creature = R.Call(o, GetPart, "Brain") != null };
             if (!info.Creature) info.Kind = Kind(o);
             infos.Add(o, info);
             return info;
@@ -1262,11 +1227,11 @@ namespace QudHUD
         // are scenery and come back as null.
         static string Kind(object o)
         {
-            if (R.Bool(Fast.Call(o, "HasPart", "StairsUp")) || R.Bool(Fast.Call(o, "HasPart", "StairsDown"))) return "stairs";
-            if (R.Bool(Fast.Call(o, "IsTakeable"))) return "item";
-            if (Fast.Call(o, "GetPart", "LiquidVolume") != null) return "liquid";
-            if (R.Bool(Fast.Call(o, "HasTag", "Plant"))) return "plant";
-            if (Fast.Call(o, "GetPart", "Inventory") != null) return "container";
+            if (R.Bool(R.Call(o, "HasPart", "StairsUp")) || R.Bool(R.Call(o, "HasPart", "StairsDown"))) return "stairs";
+            if (R.Bool(R.Call(o, "IsTakeable"))) return "item";
+            if (R.Call(o, "GetPart", "LiquidVolume") != null) return "liquid";
+            if (R.Bool(R.Call(o, "HasTag", "Plant"))) return "plant";
+            if (R.Call(o, "GetPart", "Inventory") != null) return "container";
             return null;
         }
 
@@ -1276,17 +1241,23 @@ namespace QudHUD
         {
             top = ground = '-';
             int topLayer = int.MinValue, groundLayer = int.MinValue;
-            IEnumerable objs = Fast.Get(cell, "Objects") as IEnumerable;
+            object held = R.Get(cell, Objects);
+            IList list = held as IList;
+            IEnumerable objs = list ?? held as IEnumerable;
             if (objs == null) return;
-            foreach (object o in objs)
+            // a list is walked by index, which spares allocating an enumerator for every cell
+            int count = list != null ? list.Count : -1;
+            IEnumerator each = list == null ? objs.GetEnumerator() : null;
+            for (int i = 0; list != null ? i < count : each.MoveNext(); i++)
             {
+                object o = list != null ? list[i] : each.Current;
                 if (o == null) continue;
                 Info info = About(o);
                 if (info.Render == null) continue;
-                object shown = Fast.Get(info.Render, "Visible");
+                object shown = R.Get(info.Render, Visible);
                 if (shown is bool && !(bool)shown) continue;
-                int layer = R.Int(Fast.Get(info.Render, "RenderLayer"), 0);
-                char col = Colour(R.Str(Fast.Get(info.Render, "ColorString")));
+                int layer = R.Int(R.Get(info.Render, RenderLayer), 0);
+                char col = Colour(R.Str(R.Get(info.Render, ColorString)));
                 if (layer >= topLayer) { topLayer = layer; top = col; }
                 if (!info.Creature && layer >= groundLayer) { groundLayer = layer; ground = col; }
                 if (found != null && !ReferenceEquals(o, p) && (info.Creature || info.Kind != null))
@@ -1446,12 +1417,82 @@ namespace QudHUD
     // Reflection helpers. Every lookup fails soft so a game update cannot break the whole HUD.
     static class R
     {
+        static readonly char[] Markup = { '{', '}', '&', '^' };
         const BindingFlags Inst = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
         const BindingFlags Stat = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static;
 
         static readonly Dictionary<string, Type> types = new Dictionary<string, Type>();
-        static readonly Dictionary<string, MemberInfo> members = new Dictionary<string, MemberInfo>();
-        static readonly Dictionary<string, MethodInfo> methods = new Dictionary<string, MethodInfo>();
+        // Each member is looked up once per type and name, and compiled to a delegate where it can be, so
+        // after the first turn a Get or Call costs about what the direct call would. Plain reflection
+        // built a string key and went through MethodInfo.Invoke on every call, which on the game's Mono
+        // made a turn with a few dozen creatures in view cost milliseconds; see tests/bench.
+        //
+        // The caches are keyed by member name first, and each name remembers the type it was last used
+        // with, since a loop asks the same thing of the same kind of object over and over. Names are
+        // string literals at the call sites, so they hash on a few characters rather than with the
+        // runtime's randomised string hash, which on Mono cost more than the rest of the lookup.
+        internal sealed class Slot<T> where T : class
+        {
+            public Type Last;
+            public T LastValue;
+            public Dictionary<Type, T> Others;
+        }
+
+        sealed class NameComparer : IEqualityComparer<string>
+        {
+            public bool Equals(string a, string b) { return ReferenceEquals(a, b) || string.Equals(a, b); }
+            public int GetHashCode(string s)
+            {
+                int n = s.Length;
+                return n == 0 ? 0 : ((n * 31 + s[0]) * 31 + s[n >> 1]) * 31 + s[n - 1];
+            }
+        }
+
+        // Also used for every dictionary the snapshot builds: its keys are all short literals too.
+        public static readonly IEqualityComparer<string> Keys = new NameComparer();
+        static readonly Dictionary<string, Member> members = new Dictionary<string, Member>(Keys);
+        static readonly Dictionary<Type, Dictionary<string, MemberInfo>> statics = new Dictionary<Type, Dictionary<string, MemberInfo>>();
+        static readonly object[] NoArgs = new object[0];
+
+        // Everything cached under one name. Code that asks the same thing thousands of times a turn,
+        // like the zone scan, holds one of these in a static field and skips even the name lookup.
+        public sealed class Member
+        {
+            public readonly string Name;
+            internal readonly Slot<Getter> Read = new Slot<Getter>();
+            internal readonly Slot<List<Site>> Calls = new Slot<List<Site>>();
+            internal readonly Slot<List<Site>> StaticCalls = new Slot<List<Site>>();
+            internal Member(string name) { Name = name; }
+        }
+
+        public static Member M(string name)
+        {
+            Member m;
+            if (!members.TryGetValue(name, out m)) members[name] = m = new Member(name);
+            return m;
+        }
+
+        // What is cached for this type, or false when nothing is yet. A cached null counts.
+        static bool Lookup<T>(Slot<T> slot, Type t, out T value) where T : class
+        {
+            if (ReferenceEquals(slot.Last, t)) { value = slot.LastValue; return true; }
+            if (slot.Others != null && slot.Others.TryGetValue(t, out value))
+            {
+                slot.Last = t;
+                slot.LastValue = value;
+                return true;
+            }
+            value = null;
+            return false;
+        }
+
+        static void Store<T>(Slot<T> slot, Type t, T value) where T : class
+        {
+            if (slot.Others == null) slot.Others = new Dictionary<Type, T>();
+            slot.Others[t] = value;
+            slot.Last = t;
+            slot.LastValue = value;
+        }
 
         public static Type FindType(string name)
         {
@@ -1467,12 +1508,16 @@ namespace QudHUD
             return t;
         }
 
+        static Dictionary<string, T> Of<T>(Dictionary<Type, Dictionary<string, T>> cache, Type t)
+        {
+            Dictionary<string, T> byName;
+            if (!cache.TryGetValue(t, out byName)) cache[t] = byName = new Dictionary<string, T>();
+            return byName;
+        }
+
         static MemberInfo FindMember(Type t, string name, bool isStatic)
         {
-            string key = t.FullName + "|" + name + "|" + isStatic;
-            MemberInfo m;
-            if (members.TryGetValue(key, out m)) return m;
-            m = null;
+            MemberInfo m = null;
             BindingFlags f = (isStatic ? Stat : Inst) | BindingFlags.DeclaredOnly;
             for (Type c = t; c != null && m == null; c = c.BaseType)
             {
@@ -1483,7 +1528,6 @@ namespace QudHUD
                     if (pi.Name == name && pi.CanRead && pi.GetIndexParameters().Length == 0) { m = pi; break; }
                 }
             }
-            members[key] = m;
             return m;
         }
 
@@ -1496,13 +1540,52 @@ namespace QudHUD
             return null;
         }
 
-        public static object Get(object o, string name)
+        // A field or property read. Compiled where possible; if the runtime refuses the compiled
+        // access, it falls back to reflection for good.
+        internal sealed class Getter
+        {
+            readonly MemberInfo member;
+            Func<object, object> compiled;
+
+            public Getter(MemberInfo m)
+            {
+                member = m;
+                try
+                {
+                    var o = Expression.Parameter(typeof(object), "o");
+                    Expression access = Expression.MakeMemberAccess(Expression.Convert(o, m.DeclaringType), m);
+                    compiled = Expression.Lambda<Func<object, object>>(Expression.Convert(access, typeof(object)), o).Compile();
+                }
+                catch { compiled = null; }
+            }
+
+            public object Read(object target)
+            {
+                if (compiled != null)
+                {
+                    try { return compiled(target); }
+                    catch (MemberAccessException) { compiled = null; }
+                }
+                return R.Read(member, target);
+            }
+        }
+
+        public static object Get(object o, string name) { return o == null ? null : Get(o, M(name)); }
+
+        public static object Get(object o, Member member)
         {
             if (o == null) return null;
             try
             {
-                MemberInfo m = FindMember(o.GetType(), name, false);
-                return m == null ? null : Read(m, o);
+                Type t = o.GetType();
+                Getter g;
+                if (!Lookup(member.Read, t, out g))
+                {
+                    MemberInfo m = FindMember(t, member.Name, false);
+                    g = m == null ? null : new Getter(m);
+                    Store(member.Read, t, g);
+                }
+                return g == null ? null : g.Read(o);
             }
             catch { return null; }
         }
@@ -1513,21 +1596,107 @@ namespace QudHUD
             {
                 Type t = FindType(typeName);
                 if (t == null) return null;
-                MemberInfo m = FindMember(t, name, true);
+                Dictionary<string, MemberInfo> byName = Of(statics, t);
+                MemberInfo m;
+                if (!byName.TryGetValue(name, out m)) byName[name] = m = FindMember(t, name, true);
                 return m == null ? null : Read(m, null);
             }
             catch { return null; }
         }
 
+        // One method resolved for one set of argument types. Calls of up to two arguments that fill
+        // every parameter are compiled; anything else, such as optional parameters left to their
+        // defaults, goes through reflection with the defaults worked out once.
+        internal sealed class Site
+        {
+            public Type[] Args;       // runtime types it was resolved for, null standing for a null argument
+            public MethodInfo Method; // null when nothing matched
+            object[] defaults;
+            Func<object, object> f0;
+            Func<object, object, object> f1;
+            Func<object, object, object, object> f2;
+
+            public Site(Type[] args, MethodInfo mi, bool isStatic)
+            {
+                Args = args;
+                Method = mi;
+                if (mi == null) return;
+                ParameterInfo[] ps = mi.GetParameters();
+                defaults = new object[ps.Length];
+                for (int i = args.Length; i < ps.Length; i++)
+                    defaults[i] = ps[i].HasDefaultValue ? ps[i].DefaultValue : Type.Missing;
+                if (ps.Length != args.Length || ps.Length > 2) return;
+                try
+                {
+                    var target = Expression.Parameter(typeof(object), "o");
+                    var pars = new List<ParameterExpression> { target };
+                    var callArgs = new Expression[ps.Length];
+                    for (int i = 0; i < ps.Length; i++)
+                    {
+                        if (ps[i].ParameterType.IsByRef) return;
+                        var a = Expression.Parameter(typeof(object), "a" + i);
+                        pars.Add(a);
+                        callArgs[i] = Expression.Convert(a, ps[i].ParameterType);
+                    }
+                    Expression call = isStatic ? Expression.Call(mi, callArgs)
+                                               : Expression.Call(Expression.Convert(target, mi.DeclaringType), mi, callArgs);
+                    Expression body = mi.ReturnType == typeof(void)
+                        ? (Expression)Expression.Block(call, Expression.Constant(null, typeof(object)))
+                        : Expression.Convert(call, typeof(object));
+                    if (ps.Length == 0) f0 = Expression.Lambda<Func<object, object>>(body, pars).Compile();
+                    else if (ps.Length == 1) f1 = Expression.Lambda<Func<object, object, object>>(body, pars).Compile();
+                    else f2 = Expression.Lambda<Func<object, object, object, object>>(body, pars).Compile();
+                }
+                catch { f0 = null; f1 = null; f2 = null; }
+            }
+
+            public bool Matches(int n, object a, object b, object[] rest)
+            {
+                if (Args.Length != n) return false;
+                for (int i = 0; i < n; i++)
+                {
+                    object v = rest != null ? rest[i] : i == 0 ? a : b;
+                    if (v == null ? Args[i] != null : v.GetType() != Args[i]) return false;
+                }
+                return true;
+            }
+
+            public object Invoke(object target, int n, object a, object b, object[] rest)
+            {
+                if (Method == null) return null;
+                try
+                {
+                    if (f0 != null) return f0(target);
+                    if (f1 != null) return f1(target, a);
+                    if (f2 != null) return f2(target, a, b);
+                }
+                catch (MemberAccessException) { f0 = null; f1 = null; f2 = null; }
+                object[] full = (object[])defaults.Clone();
+                for (int i = 0; i < n; i++) full[i] = rest != null ? rest[i] : i == 0 ? a : b;
+                return Method.Invoke(target, full);
+            }
+        }
+
+        static Site Resolve(Member member, Type t, bool isStatic, int n, object a, object b, object[] rest)
+        {
+            Slot<List<Site>> slot = isStatic ? member.StaticCalls : member.Calls;
+            List<Site> sites;
+            if (!Lookup(slot, t, out sites)) Store(slot, t, sites = new List<Site>(1));
+            for (int i = 0; i < sites.Count; i++)
+                if (sites[i].Matches(n, a, b, rest)) return sites[i];
+
+            object[] args = rest ?? (n == 0 ? NoArgs : n == 1 ? new[] { a } : new[] { a, b });
+            var types = new Type[n];
+            for (int i = 0; i < n; i++) types[i] = args[i] == null ? null : args[i].GetType();
+            var site = new Site(types, FindMethod(t, member.Name, args, isStatic), isStatic);
+            sites.Add(site);
+            return site;
+        }
+
+        // The overload taking these arguments with the fewest optional parameters left over.
         static MethodInfo FindMethod(Type t, string name, object[] args, bool isStatic)
         {
-            var kb = new StringBuilder(t.FullName).Append('|').Append(name).Append('|').Append(isStatic);
-            foreach (object a in args) kb.Append('|').Append(a == null ? "null" : a.GetType().FullName);
-            string key = kb.ToString();
-            MethodInfo best;
-            if (methods.TryGetValue(key, out best)) return best;
-
-            best = null;
+            MethodInfo best = null;
             int bestExtra = int.MaxValue;
             foreach (MethodInfo mi in t.GetMethods((isStatic ? Stat : Inst) | BindingFlags.FlattenHierarchy))
             {
@@ -1552,52 +1721,44 @@ namespace QudHUD
                     bestExtra = ps.Length - args.Length;
                 }
             }
-            methods[key] = best;
             return best;
         }
 
-        static object Invoke(MethodInfo mi, object target, object[] args)
-        {
-            ParameterInfo[] ps = mi.GetParameters();
-            object[] full = new object[ps.Length];
-            for (int i = 0; i < ps.Length; i++)
-                full[i] = i < args.Length ? args[i] : (ps[i].HasDefaultValue ? ps[i].DefaultValue : Type.Missing);
-            return mi.Invoke(target, full);
-        }
-
-        public static object Call(object o, string name, params object[] args)
+        static object Invoke(object o, Member m, int n, object a, object b, object[] rest)
         {
             if (o == null) return null;
-            try
-            {
-                MethodInfo mi = FindMethod(o.GetType(), name, args, false);
-                return mi == null ? null : Invoke(mi, o, args);
-            }
+            try { return Resolve(m, o.GetType(), false, n, a, b, rest).Invoke(o, n, a, b, rest); }
             catch { return null; }
         }
 
-        public static object SCall(string typeName, string name, params object[] args)
-        {
-            try
-            {
-                Type t = FindType(typeName);
-                if (t == null) return null;
-                MethodInfo mi = FindMethod(t, name, args, true);
-                return mi == null ? null : Invoke(mi, null, args);
-            }
-            catch { return null; }
-        }
-
-        public static object SCallT(Type t, string name, params object[] args)
+        static object InvokeStatic(Type t, Member m, int n, object a, object b)
         {
             if (t == null) return null;
-            try
-            {
-                MethodInfo mi = FindMethod(t, name, args, true);
-                return mi == null ? null : Invoke(mi, null, args);
-            }
+            try { return Resolve(m, t, true, n, a, b, null).Invoke(null, n, a, b, null); }
             catch { return null; }
         }
+
+        // Fixed arities so the common calls allocate nothing; more arguments than two take the array.
+        public static object Call(object o, Member m) { return Invoke(o, m, 0, null, null, null); }
+        public static object Call(object o, Member m, object a) { return Invoke(o, m, 1, a, null, null); }
+        public static object Call(object o, string name) { return o == null ? null : Invoke(o, M(name), 0, null, null, null); }
+        public static object Call(object o, string name, object a) { return o == null ? null : Invoke(o, M(name), 1, a, null, null); }
+        public static object Call(object o, string name, object a, object b) { return o == null ? null : Invoke(o, M(name), 2, a, b, null); }
+        public static object Call(object o, string name, object a, object b, object c, params object[] more)
+        {
+            if (o == null) return null;
+            var all = new object[3 + more.Length];
+            all[0] = a; all[1] = b; all[2] = c; more.CopyTo(all, 3);
+            return Invoke(o, M(name), all.Length, null, null, all);
+        }
+
+        public static object SCallT(Type t, string name) { return t == null ? null : InvokeStatic(t, M(name), 0, null, null); }
+        public static object SCallT(Type t, string name, object a) { return t == null ? null : InvokeStatic(t, M(name), 1, a, null); }
+        public static object SCallT(Type t, string name, object a, object b) { return t == null ? null : InvokeStatic(t, M(name), 2, a, b); }
+
+        public static object SCall(string typeName, string name) { return SCallT(FindType(typeName), name); }
+        public static object SCall(string typeName, string name, object a) { return SCallT(FindType(typeName), name, a); }
+        public static object SCall(string typeName, string name, object a, object b) { return SCallT(FindType(typeName), name, a, b); }
 
         // Tries likely full names first, then scans loaded assemblies once.
         public static Type FindTypeBySimpleName(string simple, params string[] likely)
@@ -1648,6 +1809,8 @@ namespace QudHUD
         public static string Strip(string s)
         {
             if (string.IsNullOrEmpty(s)) return s ?? "";
+            // most text carries no markup at all, and needs no copy made
+            if (s.IndexOfAny(Markup) < 0) return s;
             var sb = new StringBuilder(s.Length);
             int depth = 0;
             for (int i = 0; i < s.Length; i++)
@@ -1697,6 +1860,35 @@ namespace QudHUD
                 sb.Append(double.IsNaN(d) || double.IsInfinity(d) ? "null" : d.ToString("R", CultureInfo.InvariantCulture));
                 return;
             }
+            // the snapshot is built from these two concrete types, which test far faster than the interfaces
+            Dictionary<string, object> dict = v as Dictionary<string, object>;
+            if (dict != null)
+            {
+                sb.Append('{');
+                bool first = true;
+                foreach (var kv in dict)
+                {
+                    if (!first) sb.Append(',');
+                    first = false;
+                    Str(sb, kv.Key);
+                    sb.Append(':');
+                    Val(sb, kv.Value);
+                }
+                sb.Append('}');
+                return;
+            }
+            List<object> items = v as List<object>;
+            if (items != null)
+            {
+                sb.Append('[');
+                for (int i = 0; i < items.Count; i++)
+                {
+                    if (i > 0) sb.Append(',');
+                    Val(sb, items[i]);
+                }
+                sb.Append(']');
+                return;
+            }
             IDictionary<string, object> map = v as IDictionary<string, object>;
             if (map != null)
             {
@@ -1733,8 +1925,14 @@ namespace QudHUD
         static void Str(StringBuilder sb, string s)
         {
             sb.Append('"');
-            foreach (char c in s)
+            // plain runs go in whole; only the characters that need escaping are handled one at a time
+            int run = 0;
+            for (int i = 0; i < s.Length; i++)
             {
+                char c = s[i];
+                if (c >= 0x20 && c != '"' && c != '\\' && c != '<' && c != '\u2028' && c != '\u2029') continue;
+                if (i > run) sb.Append(s, run, i - run);
+                run = i + 1;
                 switch (c)
                 {
                     case '"': sb.Append("\\\""); break;
@@ -1751,6 +1949,7 @@ namespace QudHUD
                         break;
                 }
             }
+            if (s.Length > run) sb.Append(s, run, s.Length - run);
             sb.Append('"');
         }
     }
