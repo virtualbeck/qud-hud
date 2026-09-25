@@ -423,21 +423,20 @@ async function load(opts={}){
   {
     DATA.nearby=[
       {name:'bronze dagger',kind:'item',col:'c',distance:0,dir:'here'},
-      {name:'dromad merchant',kind:'creature',col:'W',distance:2,dir:'E'},
-      {name:'witchwood tree',kind:'plant',col:'g',distance:3,dir:'N'},
-      {name:'pool of <b>salt</b>',kind:'liquid',col:'b',distance:4,dir:'S'},
+      {name:'stairs down',kind:'stairs',col:'y',distance:2,dir:'E'},
+      {name:'urn of <b>salt</b>',kind:'container',col:'b',distance:4,dir:'S'},
       {name:'{{W|chest}}',kind:'container',col:'w',distance:5,dir:'W'}];
     writeData(0,1);
     ({dom,errs,d}=await load());
     let near=d.getElementById('near'),rows=near.querySelectorAll('.row');
     check('nearby: panel is on the page',!!d.querySelector('[data-panel=near]'));
-    check('nearby: everything listed by default',rows.length===5,rows.length+' rows');
+    check('nearby: everything listed by default',rows.length===4,rows.length+' rows');
     check('nearby: something underfoot reads "here"',/^here/.test(rows[0].querySelector('.dist').textContent),
           rows[0].querySelector('.dist').textContent);
     check('nearby: distance and direction otherwise',/2 away/.test(rows[1].textContent)&&/→/.test(rows[1].textContent));
     check('nearby: each carries its colour mark',
           /#40a4b9/.test(rows[0].querySelector('.mark').getAttribute('style')));
-    check('nearby: names keep game colours',/<span style="color:/.test(rows[4].innerHTML)&&!/\{\{/.test(near.textContent));
+    check('nearby: names keep game colours',/<span style="color:/.test(rows[3].innerHTML)&&!/\{\{/.test(near.textContent));
     check('nearby: a name is shown as text, never markup',
           near.querySelectorAll('b').length===0&&/<b>salt<\/b>/.test(near.textContent));
     check('nearby: no errors',errs.length===0,errs.join(' | '));
@@ -447,18 +446,19 @@ async function load(opts={}){
     check('nearby: takeable only leaves just the items',rows.length===1&&/bronze dagger/.test(rows[0].textContent),rows.length+' rows');
     dom.window.close();
 
+    // options saved by an older version, that hid plants and pools, change nothing now
     ({dom,errs,d}=await load({store:{'qudhud.opts':JSON.stringify({nearPlants:false,nearLiquids:false})}}));
     near=d.getElementById('near');
-    check('nearby: plants and pools can be hidden',
-          !/witchwood/.test(near.textContent)&&!/salt/.test(near.textContent)&&/merchant/.test(near.textContent));
+    check('nearby: old plant and pool options are ignored',near.querySelectorAll('.row').length===4);
+    check('nearby: and are gone from Options',!d.querySelector('.tog[data-opt=nearPlants]')&&!d.querySelector('.tog[data-opt=nearLiquids]'));
     dom.window.close();
 
-    // a meadow: things you can pick up lead, one row each, and repeated scenery folds into one row
+    // a storeroom: things you can pick up lead, one row each, and repeated containers fold into one row
     DATA.nearby=[
-      {name:'grass',kind:'plant',col:'g',distance:1,dir:'N'},
-      {name:'grass',kind:'plant',col:'g',distance:1,dir:'S'},
+      {name:'urn',kind:'container',col:'w',distance:1,dir:'N'},
+      {name:'urn',kind:'container',col:'w',distance:1,dir:'S'},
       {name:'table',kind:'container',col:'w',distance:1,dir:'E'},
-      {name:'grass',kind:'plant',col:'g',distance:2,dir:'W'},
+      {name:'urn',kind:'container',col:'w',distance:2,dir:'W'},
       {name:'knife',kind:'item',col:'c',distance:6,dir:'E'},
       {name:'knife',kind:'item',col:'c',distance:7,dir:'W'}];
     writeData(0,2);
@@ -467,8 +467,8 @@ async function load(opts={}){
     check('nearby: things you can pick up come first',/knife/.test(rows[0].textContent)&&/6 away/.test(rows[0].textContent),rows[0].textContent);
     check('nearby: each item keeps its own row',/knife/.test(rows[1].textContent)&&/7 away/.test(rows[1].textContent),rows[1].textContent);
     check('nearby: a line between items and the rest',!!near.querySelector('.sep'));
-    check('nearby: repeated scenery folds into one row with a count, placed at the nearest',
-          rows.length===4&&/grass\s*\u00D73/.test(rows[2].textContent)&&/adjacent/.test(rows[2].textContent),
+    check('nearby: repeats fold into one row with a count, placed at the nearest',
+          rows.length===4&&/urn\s*\u00D73/.test(rows[2].textContent)&&/adjacent/.test(rows[2].textContent),
           [].map.call(rows,r=>r.textContent).join(' | '));
     check('nearby: a single thing has no count',/table/.test(rows[3].textContent)&&!/\u00D7/.test(rows[3].textContent));
     dom.window.close();
@@ -482,9 +482,9 @@ async function load(opts={}){
     check('nearby: no more than twenty rows',rows.length===20,rows.length+' rows');
     dom.window.close();
 
-    DATA.nearby=[{name:'witchwood tree',kind:'plant',col:'g',distance:3,dir:'N'}];
+    DATA.nearby=[{name:'chest',kind:'container',col:'w',distance:3,dir:'N'}];
     writeData(0,2);
-    ({dom,errs,d}=await load({store:{'qudhud.opts':JSON.stringify({nearPlants:false})}}));
+    ({dom,errs,d}=await load({store:{'qudhud.opts':JSON.stringify({nearTakeable:true})}}));
     check('nearby: filtered to nothing says why',/matches the filters/.test(d.getElementById('near').textContent));
     dom.window.close();
 

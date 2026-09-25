@@ -242,10 +242,6 @@ body.dragging #marker{display:block}
     <label>Hide abilities that are ready</label></div>
   <div class="opt"><button type="button" class="tog" role="switch" data-opt="nearTakeable" aria-checked="false">[ ]</button>
     <label>Nearby objects: only takeable items</label></div>
-  <div class="opt"><button type="button" class="tog" role="switch" data-opt="nearPlants" aria-checked="true">[X]</button>
-    <label>Nearby objects: show plants</label></div>
-  <div class="opt"><button type="button" class="tog" role="switch" data-opt="nearLiquids" aria-checked="true">[X]</button>
-    <label>Nearby objects: show liquid pools</label></div>
   <div class="phead">Panels</div>
   <div id="panelOpts"></div>
   <div class="ver">Qud HUD v<span id="ver"></span></div>
@@ -265,7 +261,7 @@ var SHADERS={fiery:'#d74200',icy:'#77bfcf',freezing:'#77bfcf',poisonous:'#00c420
 
 var PAGE_VERSION='__VERSION__';
 var OPTS_KEY='qudhud.opts';
-var opts={waterWarn:true,waterMin:8,abilQuiet:false,nearTakeable:false,nearPlants:true,nearLiquids:true};
+var opts={waterWarn:true,waterMin:8,abilQuiet:false,nearTakeable:false};
 try{var so=JSON.parse(localStorage.getItem(OPTS_KEY));if(so){for(var k in opts)if(k in so)opts[k]=so[k];}}catch(e){}
 
 function esc(s){return String(s).replace(/[&<>'"]/g,function(c){
@@ -602,15 +598,12 @@ function renderNearby(d){
   var n=d.nearby;
   if(n===null||n===undefined){$('near').innerHTML=empty('Nearby objects unavailable in this game version.');return;}
   var shown=n.filter(function(x){
-    if(opts.nearTakeable)return x.kind==='item';
-    if(x.kind==='plant')return opts.nearPlants;
-    if(x.kind==='liquid')return opts.nearLiquids;
-    return true;
+    return !opts.nearTakeable||x.kind==='item';
   });
   if(!shown.length){$('near').innerHTML=empty(n.length?'Nothing nearby matches the filters in Options.':'Nothing of note nearby.');return;}
-  // Things you can pick up first, one row each, since each lies somewhere different. Then the rest,
-  // nearest first, with repeats of the same thing, a meadow's worth of grass, folded into one row
-  // that says how many and where the nearest is.
+  // Things you can pick up first, one row each, since each lies somewhere different. Then containers
+  // and stairs, nearest first, with repeats of the same thing folded into one row that says how many
+  // and where the nearest is.
   var items=[],rest=[],seen={};
   shown.forEach(function(x){
     if(x.kind==='item'){items.push(x);return;}

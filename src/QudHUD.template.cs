@@ -1389,11 +1389,8 @@ namespace QudHUD
             nearby = Nearest(p, found);
         }
 
-        // Things you can pick up first, then everything else, each nearest first and each with its own
-        // share of the list. With one shared list, the grass and furniture around you filled it within a
-        // couple of steps and a knife a few cells away never made it. Only now are creatures checked for
-        // being dead, hostile or a companion, and only until their share is full, since those checks are
-        // the expensive ones.
+        // Things you can pick up first, then containers and stairs, each nearest first and each with its
+        // own share of the list, so a room full of chests cannot crowd out a knife.
         static List<object> Nearest(GameObject p, List<Candidate> found)
         {
             found.Sort((a, b) => a.Dist.CompareTo(b.Dist));
@@ -1408,11 +1405,9 @@ namespace QudHUD
                     if (items.Count >= NearbyMax && rest.Count >= NearbyMax) break;
                     continue;
                 }
-                if (f.Info.Creature && (Snapshot.IsDead(f.O) || Snapshot.IsHostile(f.O, p) || Snapshot.IsCompanion(f.O, p)))
-                    continue;
                 list.Add(new Dictionary<string, object>(R.Keys) {
                     { "name", Snapshot.Name(f.O) },
-                    { "kind", f.Info.Creature ? "creature" : f.Info.Kind },
+                    { "kind", f.Info.Kind },
                     { "col", f.Col.ToString() },
                     { "distance", R.Int(R.Call(p, "DistanceTo", f.O), f.Dist) },
                     { "dir", Snapshot.Direction(p, f.O) }
@@ -1439,14 +1434,13 @@ namespace QudHUD
             return info;
         }
 
-        // The kinds of thing the game's nearby list shows, besides creatures. Walls, floors and the like
-        // are scenery and come back as null.
+        // The kinds of thing worth listing as nearby: what you can pick up, what you can open, and the way
+        // on. Everything else, walls, floors, grass, pools, is scenery and comes back as null, and
+        // creatures have their own panels.
         static string Kind(object o)
         {
             if (R.Bool(R.Call(o, "HasPart", "StairsUp")) || R.Bool(R.Call(o, "HasPart", "StairsDown"))) return "stairs";
             if (R.Bool(R.Call(o, "IsTakeable"))) return "item";
-            if (R.Call(o, "GetPart", "LiquidVolume") != null) return "liquid";
-            if (R.Bool(R.Call(o, "HasTag", "Plant"))) return "plant";
             if (R.Call(o, "GetPart", "Inventory") != null) return "container";
             return null;
         }
@@ -1476,7 +1470,7 @@ namespace QudHUD
                 char col = Colour(R.Str(R.Get(info.Render, ColorString)));
                 if (layer >= topLayer) { topLayer = layer; top = col; }
                 if (!info.Creature && layer >= groundLayer) { groundLayer = layer; ground = col; }
-                if (found != null && !ReferenceEquals(o, p) && (info.Creature || info.Kind != null))
+                if (found != null && !ReferenceEquals(o, p) && !info.Creature && info.Kind != null)
                     found.Add(new Candidate { O = o, Info = info, Col = col, Dist = dist });
             }
         }

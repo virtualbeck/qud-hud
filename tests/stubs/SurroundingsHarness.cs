@@ -194,9 +194,9 @@ namespace QudHUDTests
             string listed = string.Join(", ", names.ToArray());
 
             Check("nearby: item listed", names.Contains("dagger"), listed);
-            Check("nearby: neutral creature listed", names.Contains("merchant"), listed);
-            Check("nearby: liquid pool listed", names.Contains("salt pool"), listed);
-            Check("nearby: plant listed", names.Contains("witchwood tree"), listed);
+            Check("nearby: creatures left out, even neutral ones", !names.Contains("merchant"), listed);
+            Check("nearby: liquid pools left out", !names.Contains("salt pool"), listed);
+            Check("nearby: plants left out", !names.Contains("witchwood tree"), listed);
             Check("nearby: container listed", names.Contains("chest"), listed);
             Check("nearby: stairs listed", names.Contains("stairs down"), listed);
             Check("nearby: hostile left out, it has its own panel", !names.Contains("snapjaw"), listed);
@@ -207,8 +207,7 @@ namespace QudHUDTests
             Check("nearby: scenery left out", !names.Contains("dirt") && !names.Contains("wall"), listed);
             Check("nearby: nearest first", names[0] == "dagger", listed);
             Check("nearby: kinds are right",
-                  (string)Entry(d, "dagger")["kind"] == "item" && (string)Entry(d, "merchant")["kind"] == "creature"
-                  && (string)Entry(d, "salt pool")["kind"] == "liquid" && (string)Entry(d, "witchwood tree")["kind"] == "plant"
+                  (string)Entry(d, "dagger")["kind"] == "item"
                   && (string)Entry(d, "chest")["kind"] == "container" && (string)Entry(d, "stairs down")["kind"] == "stairs", "");
             Check("nearby: distance and direction", (int)Entry(d, "dagger")["distance"] == 1 && (string)Entry(d, "dagger")["dir"] == "E",
                   Entry(d, "dagger")["distance"] + " " + Entry(d, "dagger")["dir"]);
@@ -274,8 +273,8 @@ namespace QudHUDTests
             Check("meadow: a knife six cells off still makes the list", names.Contains("knife"), listed);
             Check("meadow: things you can pick up come first, nearest first",
                   names.Count > 2 && names[0] == "knife" && names[1] == "long sword", listed);
-            Check("meadow: the scenery is still listed after them", names.Contains("table") && names.Contains("grass"), listed);
-            Check("meadow: each share is capped", names.Count == 2 + 20, names.Count.ToString());
+            Check("meadow: the table follows them", names.Count == 3 && names[2] == "table", listed);
+            Check("meadow: no grass at all", !names.Contains("grass"), listed);
 
             // --- cost and size on a full 80x25 zone, everything in view
             Reset();
