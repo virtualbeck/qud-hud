@@ -1,6 +1,7 @@
 # Changelog
 
 ## 1.0.10
+- Fixed: travelling on the world map was noticeably slower with the mod enabled, up to a second between a keypress and the move. One step there passes hundreds of game turns, and the mod rebuilt and rewrote its data on every one of them. It now updates once when you get control back, and a few times a second while time passes without input, as when resting. A step that still costs noticeable time is noted in Player.log.
 - Fixed: on Linux with a Flatpak browser, such as the Firefox that Bazzite ships, the page sat on "Waiting for Caves of Qud" forever with the game running. The sandbox hands the browser the page alone, not the data file beside it. The page now recognises this and says how to grant access, and the READMEs give the Linux location, `~/QudHUD`, rather than `Documents/QudHUD`.
 - Fixed: dismissed unspent point reminders came back when you levelled up, and all of them came back after playing another character. A dismissal now belongs to one character and one kind of point, and lasts until that character spends them.
 - Added: a Minimap of the current zone. It shows what your character knows and nothing more: unexplored ground is blank, what is in view is drawn live, and places you have seen but cannot see now are drawn faded, as they were when you last saw them, with no creatures in them.

@@ -67,6 +67,10 @@ namespace QudHUD
         static long seq;
         static DateTime lastWrite = DateTime.MinValue;
         static bool announced;
+        // what the mod cost the game since the player last had control, for the slow step note
+        static int turnEvents, builds;
+        static double spentMs;
+        static DateTime lastSlowNote = DateTime.MinValue;
         static readonly HashSet<string> logged = new HashSet<string>();
 
         public static string Dir
@@ -115,9 +119,41 @@ namespace QudHUD
         {
             if (player == null) return;
             DateTime now = DateTime.UtcNow;
-            // During resting and auto-explore, cap writes to a few per second.
-            if (!force && R.Bool(R.SCall("XRL.World.Capabilities.AutoAct", "IsActive")) && (now - lastWrite).TotalMilliseconds < 300) return;
+            if (!force)
+            {
+                turnEvents++;
+                double since = (now - lastWrite).TotalMilliseconds;
+                // The turn events fire every game turn, and one step on the world map passes hundreds of
+                // them. When the input hook is in, it already catches every turn the player sees, so the
+                // events only have to keep the page moving while time passes without input, and a few
+                // updates a second does that. Without the hook they are all there is, and only resting
+                // and auto-explore are capped.
+                if (TurnHook.Hooked ? since < 250
+                    : since < 300 && R.Bool(R.SCall("XRL.World.Capabilities.AutoAct", "IsActive"))) return;
+            }
 
+            var took = System.Diagnostics.Stopwatch.StartNew();
+            try { Write(player, now); }
+            finally { builds++; spentMs += took.Elapsed.TotalMilliseconds; }
+        }
+
+        // Called as the player gets control back. A step that cost the game noticeable time is noted in
+        // Player.log, at most once a minute, with enough to tell whether the mod or the turn count did it.
+        public static void StepDone()
+        {
+            DateTime now = DateTime.UtcNow;
+            if (spentMs >= 100 && (now - lastSlowNote).TotalSeconds >= 60)
+            {
+                lastSlowNote = now;
+                UnityEngine.Debug.Log("[QudHUD] Slow step: " + spentMs.ToString("0", CultureInfo.InvariantCulture) + " ms in " + builds +
+                    " update(s) over " + turnEvents + " turn event(s).");
+            }
+            turnEvents = builds = 0;
+            spentMs = 0;
+        }
+
+        static void Write(GameObject player, DateTime now)
+        {
             string json;
             try { json = Json.Write(Snapshot.Build(player)); }
             catch (Exception ex) { Log("build", ex); return; }
@@ -161,6 +197,7 @@ namespace QudHUD
     public static class TurnHook
     {
         static bool tried;
+        public static bool Hooked;
 
         public static void Install()
         {
@@ -188,6 +225,7 @@ namespace QudHUD
                     if (mi.Name != "PlayerTurn" || mi.IsGenericMethodDefinition || mi.IsAbstract) continue;
                     if (R.Call(harmony, "Patch", mi, prefix) != null) patched++;
                 }
+                Hooked = patched > 0;
                 UnityEngine.Debug.Log("[QudHUD] Input hook patched " + patched + " method(s).");
             }
             catch (Exception ex) { Hud.Log("hook", ex); }
@@ -195,7 +233,7 @@ namespace QudHUD
 
         public static void BeforePlayerInput()
         {
-            try { Hud.Update(The.Player, false); }
+            try { Hud.Update(The.Player, true); Hud.StepDone(); }
             catch (Exception ex) { Hud.Log("hook update", ex); }
         }
     }

@@ -457,6 +457,10 @@ class CSharp(Temp):
         # actually runs the reader against stand-in message queues, rather than only compiling it
         self.run_harness("MessageLogHarness")
 
+    def test_turn_events_do_not_rebuild_every_turn(self):
+        # one world map step passes hundreds of game turns; see tests/stubs/TurnEventHarness.cs
+        self.run_harness("TurnEventHarness")
+
     def test_zone_scan(self):
         # the minimap and nearby objects: what the character knows, what is listed, memory, cost
         out = self.run_harness("SurroundingsHarness")
