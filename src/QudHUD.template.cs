@@ -211,7 +211,7 @@ namespace QudHUD
         static void Save(string json)
         {
             seq++;
-            string payload = "window.QUD_HUD={\"version\":\"" + Version + "\",\"seq\":" + seq + ",\"stamp\":\"" + DateTime.Now.ToString("HH:mm:ss", CultureInfo.InvariantCulture) + "\",\"data\":" + json + "};\n";
+            string payload = "window.QUD_HUD={\"version\":\"" + Version + "\",\"seq\":" + seq + ",\"at\":" + DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() + ",\"stamp\":\"" + DateTime.Now.ToString("HH:mm:ss", CultureInfo.InvariantCulture) + "\",\"data\":" + json + "};\n";
             Writer.Post(Path.Combine(Dir, "hud_data.js"), payload);
             lastJson = json;
         }

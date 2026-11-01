@@ -30,7 +30,7 @@ const DATA={
 };
 function writeData(ageSec,seq){
   fs.writeFileSync(path.join(DIR,'hud_data.js'),
-    'window.QUD_HUD='+JSON.stringify({version:VER,seq:seq,stamp:stampAgo(ageSec),data:DATA})+';\n');
+    'window.QUD_HUD='+JSON.stringify({version:VER,seq:seq,at:Date.now()-ageSec*1000,stamp:stampAgo(ageSec),data:DATA})+';\n');
 }
 
 let fails=0;
@@ -99,7 +99,7 @@ async function load(opts={}){
   check('title shows critical prefix',/^!! /.test(d.title),JSON.stringify(d.title));
   check('grips added to panels',d.querySelectorAll('.grip').length>0,d.querySelectorAll('.grip').length+' grips');
   // carry round-trip: a payload that survived JSON in sessionStorage must still render
-  const carried=JSON.parse(JSON.stringify({version:VER,seq:1,stamp:stampAgo(0),data:DATA}));
+  const carried=JSON.parse(JSON.stringify({version:VER,seq:1,at:Date.now(),stamp:stampAgo(0),data:DATA}));
   dom.window.__qudhud.render(carried);
   check('carried payload re-renders',/Tester/.test(d.getElementById('who').textContent));
   dom.window.close();

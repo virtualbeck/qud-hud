@@ -119,7 +119,7 @@ body{
 #broke[hidden]{display:none}
 /* readings that are no longer current get faded, so a dead link is obvious from across the room */
 #app{transition:opacity .4s,filter .4s}
-body.stale #app{opacity:.32;filter:grayscale(.6)}
+body.stale #app{opacity:.6;filter:grayscale(.6)}
 
 #wait{display:none;max-width:40rem;margin:18vh auto 0;text-align:center}
 #wait .panel{text-align:left}
@@ -733,22 +733,19 @@ function setLink(state,text){
 }
 // hud_data.js stays on disk after the game exits, so a script that loads cleanly only proves
 // the file is readable, not that anything is still writing it. Age comes from the payload's own
-// clock (same machine as this page) rather than a page-local timer, so the periodic rebuild
-// further down cannot reset a long-dead link back to a fresh-looking green.
-function stampAge(stamp){
-  var m=/^(\d{1,2}):(\d{2}):(\d{2})$/.exec(String(stamp==null?'':stamp));
-  if(!m)return null;
-  var d=new Date();
-  var age=(d.getHours()*3600+d.getMinutes()*60+d.getSeconds())-((+m[1])*3600+(+m[2])*60+(+m[3]));
-  if(age<0)age+=86400;
-  return age*1000;
+// clock rather than a page-local timer, so the periodic rebuild further down cannot reset a
+// long-dead link back to a fresh-looking green. It is UTC epoch ms, not the local stamp, because
+// the browser's timezone can differ from the game's (Firefox resistFingerprinting reports UTC).
+function payloadAge(at){
+  if(typeof at!=='number'||!isFinite(at))return null;
+  return Math.max(0,Date.now()-at);
 }
 function ageText(ms){
   var m=Math.round(ms/60000);
   return m<60?m+'m':Math.floor(m/60)+'h '+(m%60)+'m';
 }
 function showLink(p){
-  var age=stampAge(p.stamp);
+  var age=payloadAge(p.at);
   if(age!==null&&age>=STALE_MS)setLink('stale','No updates for '+ageText(age)+'. Last change '+p.stamp);
   else setLink('on','Linked. Last change '+(p.stamp||'?'));
 }
