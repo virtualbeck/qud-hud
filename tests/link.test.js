@@ -13,12 +13,11 @@ const grab=n=>{
     else if(src[k]==='}'){d--;if(d===0)return src.slice(i,k+1);}
   }
 };
-const code=grab('stampAge')+'\n'+grab('ageText');
+const code=grab('payloadAge')+'\n'+grab('ageText');
 
-let fakeNow={h:12,m:0,s:0};
-class FakeDate{ getHours(){return fakeNow.h} getMinutes(){return fakeNow.m} getSeconds(){return fakeNow.s} }
-const ctx={Date:FakeDate,Math};
-const fn=new Function('Date','Math',code+';return {stampAge,ageText};')(FakeDate,Math);
+const NOW=Date.UTC(2026,0,1,12,0,0);
+const FakeDate={now:()=>NOW};
+const fn=new Function('Date','Math','isFinite',code+';return {payloadAge,ageText};')(FakeDate,Math,isFinite);
 
 let fails=0;
 const eq=(label,got,want)=>{
@@ -29,27 +28,19 @@ const eq=(label,got,want)=>{
 
 const STALE=2*60*1000;
 
-fakeNow={h:12,m:0,s:0};
-eq('same second -> 0ms',            fn.stampAge('12:00:00'), 0);
-eq('30s ago',                       fn.stampAge('11:59:30'), 30000);
-eq('2min ago == threshold',         fn.stampAge('11:58:00'), 120000);
-eq('2min ago is stale',             fn.stampAge('11:58:00')>=STALE, true);
-eq('90s ago is NOT stale',          fn.stampAge('11:58:30')>=STALE, false);
-eq('1-digit hour parses',           fn.stampAge('9:00:00'), 3*3600*1000);
+eq('same instant -> 0ms',           fn.payloadAge(NOW), 0);
+eq('30s ago',                       fn.payloadAge(NOW-30000), 30000);
+eq('2min ago is stale',             fn.payloadAge(NOW-120000)>=STALE, true);
+eq('90s ago is NOT stale',          fn.payloadAge(NOW-90000)>=STALE, false);
+eq('3h ago',                        fn.payloadAge(NOW-3*3600000), 3*3600000);
+// game clock slightly ahead of the browser's must not read as negative age
+eq('future stamp clamps to 0',      fn.payloadAge(NOW+5000), 0);
 
-// midnight wrap: game wrote just before midnight, page now just after
-fakeNow={h:0,m:0,s:5};
-eq('midnight wrap -> 7s',           fn.stampAge('23:59:58'), 7000);
-eq('midnight wrap not stale',       fn.stampAge('23:59:58')>=STALE, false);
-
-// malformed / missing stamps must degrade to "unknown" (null), never NaN
-fakeNow={h:12,m:0,s:0};
-eq('null stamp',                    fn.stampAge(null), null);
-eq('undefined stamp',               fn.stampAge(undefined), null);
-eq('question mark stamp',           fn.stampAge('?'), null);
-eq('empty stamp',                   fn.stampAge(''), null);
-eq('garbage stamp',                 fn.stampAge('not a time'), null);
-eq('partial stamp',                 fn.stampAge('12:00'), null);
+// missing / malformed values must degrade to "unknown" (null), never NaN
+eq('null',                          fn.payloadAge(null), null);
+eq('undefined',                     fn.payloadAge(undefined), null);
+eq('string',                        fn.payloadAge('12:00:00'), null);
+eq('NaN',                           fn.payloadAge(NaN), null);
 
 eq('ageText 2m',                    fn.ageText(120000), '2m');
 eq('ageText 59m',                   fn.ageText(59*60000), '59m');

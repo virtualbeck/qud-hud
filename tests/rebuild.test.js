@@ -29,7 +29,7 @@ const now=()=>stampAgo(0);
 const DATA={player:{name:'Tester',level:7,hp:30,hpMax:60},zone:{name:'Joppa'},clock:{},
   attributes:[],combat:{},resist:{},points:{},survival:{},effects:[],abilities:[],
   gear:{missing:[],issues:[],cells:[]},hostiles:[],alerts:[]};
-const payload=(seq,ageSec)=>({version:VER,seq:seq,stamp:stampAgo(ageSec||0),data:DATA});
+const payload=(seq,ageSec)=>({version:VER,seq:seq,at:Date.now()-(ageSec||0)*1000,stamp:stampAgo(ageSec||0),data:DATA});
 const writeData=(seq,ageSec)=>fs.writeFileSync(path.join(DIR,'hud_data.js'),'window.QUD_HUD='+JSON.stringify(payload(seq,ageSec))+';\n');
 const rmData=()=>{try{fs.unlinkSync(path.join(DIR,'hud_data.js'))}catch(e){}};
 

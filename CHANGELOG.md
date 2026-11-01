@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.12
+- Fixed: the page could stay dimmed and say "No updates for 5h" (or 23h) while the game was updating it, when the browser and the game disagreed about the timezone. Firefox and LibreWolf with resistFingerprinting report UTC, and games run through Proton can get the timezone wrong. The age of the data now comes from a UTC time in the data file, so timezones no longer matter.
+- Changed: stale readings fade less, so they stay readable while the link light shows they are old.
+
 ## 1.0.11
 - Changed: Nearby objects lists only what you can use: things you can pick up first, each on its own row, then containers and stairs, with repeats folded into one row with a count. Plants, pools and creatures are gone from it, and so are the Options that hid plants and pools. It used to list the twenty nearest things of any kind, so the grass around you filled it and a knife a few cells away never made it.
 - Fixed: on a window too narrow for three columns, the Minimap, Nearby objects and Messages column wrapped under the first column, below the taller of the two above it, leaving a gap and mixing it in with the wrong panels. Columns that do not fit now stack under the last one that does, in their own order.
