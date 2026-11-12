@@ -537,5 +537,12 @@ class Text(unittest.TestCase):
                 self.assertFalse(any(d in line for d in dashes), f"{f}:{n} has a long dash")
 
 
+class DataFileTests(unittest.TestCase):
+    def test_template_writes_a_utc_epoch_in_at(self):
+        # the page ages the data from "at"; a local time here brings back the timezone bug
+        cs = (REPO / "src/QudHUD.template.cs").read_text(encoding="utf-8")
+        self.assertIn('\\"at\\":" + DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()', cs)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=1)
