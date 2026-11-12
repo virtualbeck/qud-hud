@@ -8,11 +8,7 @@ process.on('exit',()=>{try{fs.rmSync(DIR,{recursive:true,force:true})}catch(e){}
 const page=fs.readFileSync(SRC+'/src/hud.html','utf8').split('__VERSION__').join(VER);
 fs.writeFileSync(path.join(DIR,'hud.html'),page);
 
-const pad=n=>String(n).padStart(2,'0');
-function stampAgo(sec){
-  const d=new Date(Date.now()-sec*1000);
-  return pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds());
-}
+const {payload}=require('./payload');
 const DATA={
   player:{name:'{{W|Tester}}',genotype:'True Kin',subtype:'Greybeard',level:7,xp:1500,xpNext:2000,xpPrev:1200,hp:30,hpMax:60},
   zone:{name:'Joppa',depth:0},clock:{time:'morning',day:'12th',month:'Ut yar'},
@@ -30,7 +26,7 @@ const DATA={
 };
 function writeData(ageSec,seq){
   fs.writeFileSync(path.join(DIR,'hud_data.js'),
-    'window.QUD_HUD='+JSON.stringify({version:VER,seq:seq,at:Date.now()-ageSec*1000,stamp:stampAgo(ageSec),data:DATA})+';\n');
+    'window.QUD_HUD='+JSON.stringify(payload(VER,DATA,seq,ageSec))+';\n');
 }
 
 let fails=0;
@@ -99,7 +95,7 @@ async function load(opts={}){
   check('title shows critical prefix',/^!! /.test(d.title),JSON.stringify(d.title));
   check('grips added to panels',d.querySelectorAll('.grip').length>0,d.querySelectorAll('.grip').length+' grips');
   // carry round-trip: a payload that survived JSON in sessionStorage must still render
-  const carried=JSON.parse(JSON.stringify({version:VER,seq:1,at:Date.now(),stamp:stampAgo(0),data:DATA}));
+  const carried=JSON.parse(JSON.stringify(payload(VER,DATA,1,0)));
   dom.window.__qudhud.render(carried);
   check('carried payload re-renders',/Tester/.test(d.getElementById('who').textContent));
   dom.window.close();
@@ -113,6 +109,13 @@ async function load(opts={}){
   check('stale: text reports age',/^No updates for 3h 0m\./.test(l2.textContent),JSON.stringify(l2.textContent));
   check('stale: data still rendered',/Tester/.test(d.getElementById('who').textContent));
   dom.window.close();
+
+  // --- the timezone bug: game and browser disagree on local time, so the stamp is hours off but the data is fresh
+  fs.writeFileSync(path.join(DIR,'hud_data.js'),'window.QUD_HUD='+JSON.stringify({...payload(VER,DATA,1,0),stamp:'03:00:00'})+';\n');
+  ({dom,errs,d}=await load());
+  check('fresh data with a wrong-timezone stamp stays green',d.getElementById('link').className==='on',JSON.stringify(d.getElementById('link').className));
+  dom.window.close();
+  check('stale readings are not dimmed',!/body\.stale\s+#app/.test(page));
 
   // --- just under the threshold stays green
   writeData(110,1);
