@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.0.13
+- Changed: the readings are no longer dimmed or washed out when the link goes stale. The game only writes the data file when something changes, so sitting in a menu or a long dialogue for a couple of minutes looked like a dead link. The footer light and its "No updates for" text still show how old the data is.
+
 ## 1.0.12
 - Fixed: the page could stay dimmed and say "No updates for 5h" (or 23h) while the game was updating it, when the browser and the game disagreed about the timezone. Firefox and LibreWolf with resistFingerprinting report UTC, and games run through Proton can get the timezone wrong. The age of the data now comes from a UTC time in the data file, so timezones no longer matter.
 - Changed: stale readings fade less, so they stay readable while the link light shows they are old.

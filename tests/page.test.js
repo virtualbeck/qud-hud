@@ -714,10 +714,10 @@ async function load(opts={}){
   dom.window.close();
   DATA.hostiles=[{name:'snapjaw scavenger',level:3,rating:'{{g|Easy}}',distance:1,dir:'NE',exact:true,hp:10,hpMax:12}];
 
-  // --- stale dimming, panel hiding, fault reporting
+  // --- stale flag, panel hiding, fault reporting
   writeData(0,1);
   ({dom,errs,d}=await load());
-  check('fresh data is not dimmed',!d.body.classList.contains('stale'));
+  check('fresh data is not marked stale',!d.body.classList.contains('stale'));
   const panelCount=d.querySelectorAll('.panel[data-panel]').length;
   check('every panel has a hide button',d.querySelectorAll('.hide').length===panelCount,
         d.querySelectorAll('.hide').length+' of '+panelCount);
@@ -753,10 +753,10 @@ async function load(opts={}){
   check('hidden panels load without errors',errs.length===0,errs.join(' | '));
   dom.window.close();
 
-  // stale data must dim the readings
+  // stale data must be flagged (the link light shows it; the readings are no longer dimmed)
   writeData(3*3600,1);
   ({dom,errs,d}=await load());
-  check('stale data dims the page',d.body.classList.contains('stale'));
+  check('stale data marks the page stale',d.body.classList.contains('stale'));
   dom.window.close();
 
   // a panel that throws must be named in the footer and logged only once

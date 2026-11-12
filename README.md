@@ -53,8 +53,8 @@ Full instructions are in [mod/README.md](mod/README.md), which ships with the mo
   you spend them.
 - **Options** can also hide abilities that are simply ready.
 - The dot in the footer is green while the data is current, amber once nothing has been written for
-  a couple of minutes, and red if the file can't be read. The readings fade when they go stale, so a
-  closed game doesn't look like a live one.
+  a couple of minutes, and red if the file can't be read. The readings are never dimmed, so an amber
+  dot can simply mean nothing has changed lately.
 
 ## Bugs and suggestions
 
